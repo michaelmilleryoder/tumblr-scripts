@@ -3,7 +3,8 @@ import numpy as np
 import pickle
 import os
 
-from sklearn.mixture import GaussianMixture
+#from sklearn.mixture import GaussianMixture
+from gaussian_mixture_cotrain import GaussianMixtureCotrain
 
 from pprint import pprint
 
@@ -18,10 +19,10 @@ print()
 
 # Fit model
 N_COMPS = 50
-N_DATAPTS = int(1e6)
-BEG_DATAPT = int(2e6)
+N_DATAPTS = 500000
+BEG_DATAPT = int(1.5e6)
 MAX_ITERS = 1000
-LOAD_EXISTING = True
+LOAD_EXISTING = False
 print("{} components\n{} datapts\n{} iterations".format(N_COMPS, N_DATAPTS, MAX_ITERS))
 print()
 
@@ -39,7 +40,7 @@ if LOAD_EXISTING:
         raise IOError("Can't find existing model.")
 
 else:
-    clf = GaussianMixture(n_components=N_COMPS, verbose=2, warm_start=True, max_iter=MAX_ITERS)
+    clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, warm_start=True, max_iter=MAX_ITERS)
 
 X = desc_emb[BEG_DATAPT:BEG_DATAPT + N_DATAPTS,:]
 print("Fitting model...")
