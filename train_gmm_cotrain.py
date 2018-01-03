@@ -9,18 +9,26 @@ from gaussian_mixture_cotrain import GaussianMixtureCotrain
 from pprint import pprint
 
 
-# # Run GMM clustering on blog descriptions
+# # Run GMM clustering, co-training on blog descriptions and recent text posts
 
 # Load data
-print("Loading data...")
-desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_embeddings_avg.npy'
+print("Loading description data...")
+desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
 desc_emb = np.load(desc_emb_path)
 print()
 
+print("Loading text post data...")
+posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embeds.npy'
+posts_emb = np.load(desc_emb_path)
+print()
+
+assert desc_emb.shape == posts_emb.shape
+
 # Fit model
 N_COMPS = 50
-N_DATAPTS = 500000
-BEG_DATAPT = int(1.5e6)
+N_DATAPTS = min(desc_emb.shape[0], posts_emb.shape[0])
+#N_DATAPTS = 500000
+#BEG_DATAPT = int(1.5e6)
 MAX_ITERS = 1000
 LOAD_EXISTING = False
 print("{} components\n{} datapts\n{} iterations".format(N_COMPS, N_DATAPTS, MAX_ITERS))
@@ -40,17 +48,19 @@ if LOAD_EXISTING:
         raise IOError("Can't find existing model.")
 
 else:
-    clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, warm_start=True, max_iter=MAX_ITERS)
+    #clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, warm_start=True, max_iter=MAX_ITERS)
+    clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, verbose_interval=1, max_iter=MAX_ITERS)
 
-X = desc_emb[BEG_DATAPT:BEG_DATAPT + N_DATAPTS,:]
+#X = desc_emb[BEG_DATAPT:BEG_DATAPT + N_DATAPTS,:]
+X_arr = [desc_emb, posts_emb]
 print("Fitting model...")
-clf.fit(X)
+clf.fit(X_arr)
 
 
 
 # Save model
-outpath = '/usr0/home/mamille2/tumblr/data/gmm_{}_desc.pkl'.format(N_COMPS)
-print("Saving model to {}...".format(outpath), end='')
+outpath = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_{}_desc.pkl'.format(N_COMPS)
+print("Saving model to {}...".format(outpath), end=' ')
 with open(outpath, 'wb') as f:
     pickle.dump(clf, f)
 print("done")

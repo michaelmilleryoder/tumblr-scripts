@@ -16,9 +16,9 @@ from scipy import linalg
 #from ..utils.extmath import row_norms
 
 # modified import statements for new location
-from sklearn.mixture.base import BaseMixture, _check_shape
+from sklearn.mixture.base import BaseMixture, _check_shape, _check_X
 from sklearn.externals.six.moves import zip
-from sklearn.utils import check_array
+from sklearn.utils import check_array, check_random_state
 from sklearn.utils.validation import check_is_fitted
 from sklearn.utils.extmath import row_norms
 
@@ -754,3 +754,90 @@ class GaussianMixtureCotrain(BaseMixture):
             The lower the better.
         """
         return -2 * self.score(X) * X.shape[0] + 2 * self._n_parameters()
+
+
+    def fit(self, X_arr, y=None):
+        """Estimate model parameters with the EM algorithm.
+    
+        Modified to do co-training.
+
+        The method fit the model `n_init` times and set the parameters with
+        which the model has the largest likelihood or lower bound. Within each
+        trial, the method iterates between E-step and M-step for `max_iter`
+        times until the change of likelihood or lower bound is less than
+        `tol`, otherwise, a `ConvergenceWarning` is raised.
+
+        Parameters
+        ----------
+        X_arr : array-like, shape (n_diff_data_sources)
+            Each array-like, shape (n_samples, n_features)
+            List of n_features-dimensional data points. Each row
+            corresponds to a single data point.
+
+        Returns
+        -------
+        self
+        """
+
+        print("Fitting with co-training...")
+        
+        for i,X in enumerate(X_arr):
+            X = _check_X(X, self.n_components)
+            self._check_initial_parameters(X)
+            X_arr[i] = X
+
+        # if we enable warm_start, we will have a unique initialisation
+        do_init = not(self.warm_start and hasattr(self, 'converged_'))
+        n_init = self.n_init if do_init else 1
+
+        max_lower_bound = -np.infty
+        self.converged_ = False
+
+        random_state = check_random_state(self.random_state)
+
+        n_samples, _ = X_arr[0].shape
+        for init in range(n_init):
+            self._print_verbose_msg_init_beg(init)
+
+            if do_init:
+                self._initialize_parameters(X, random_state)
+                self.lower_bound_ = -np.infty
+
+            for n_iter in range(self.max_iter):
+                # With co-training, each iteration goes thru each data source
+
+                prev_lower_bound = self.lower_bound_
+
+                for X in X_arr:
+                    log_prob_norm, log_resp = self._e_step(X)
+                    self._m_step(X, log_resp)
+
+                # use log_resp and log_prob_norm from last data src
+                self.lower_bound_ = self._compute_lower_bound(
+                    log_resp, log_prob_norm)
+
+                change = self.lower_bound_ - prev_lower_bound
+                self._print_verbose_msg_iter_end(n_iter, change)
+
+                if abs(change) < self.tol:
+                    self.converged_ = True
+                    break
+
+            self._print_verbose_msg_init_end(self.lower_bound_)
+
+            if self.lower_bound_ > max_lower_bound:
+                max_lower_bound = self.lower_bound_
+                best_params = self._get_parameters()
+                best_n_iter = n_iter
+
+        if not self.converged_:
+            warnings.warn('Initialization %d did not converge. '
+                          'Try different init parameters, '
+                          'or increase max_iter, tol '
+                          'or check for degenerate data.'
+                          % (init + 1), ConvergenceWarning)
+
+        self._set_parameters(best_params)
+        self.n_iter_ = best_n_iter
+
+        return self
