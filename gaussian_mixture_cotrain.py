@@ -759,7 +759,7 @@ class GaussianMixtureCotrain(BaseMixture):
     def fit(self, X_arr, y=None):
         """Estimate model parameters with the EM algorithm.
     
-        Modified to do co-training.
+        Modified to do cotraining.
 
         The method fit the model `n_init` times and set the parameters with
         which the model has the largest likelihood or lower bound. Within each

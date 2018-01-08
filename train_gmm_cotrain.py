@@ -13,12 +13,13 @@ from pprint import pprint
 
 # Load data
 print("Loading description data...")
-desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
+#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
+desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_sum.npy'
 desc_emb = np.load(desc_emb_path)
 print()
 
 print("Loading text post data...")
-posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embeds.npy'
+posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embed_sum.npy'
 posts_emb = np.load(desc_emb_path)
 print()
 
@@ -52,14 +53,14 @@ else:
     clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, verbose_interval=1, max_iter=MAX_ITERS)
 
 #X = desc_emb[BEG_DATAPT:BEG_DATAPT + N_DATAPTS,:]
-X_arr = [desc_emb, posts_emb]
+X_arr = [posts_emb, desc_emb] # desc embeddings last
 print("Fitting model...")
 clf.fit(X_arr)
 
 
 
 # Save model
-outpath = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_{}_desc.pkl'.format(N_COMPS)
+outpath = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_{}_desc_sum.pkl'.format(N_COMPS)
 print("Saving model to {}...".format(outpath), end=' ')
 with open(outpath, 'wb') as f:
     pickle.dump(clf, f)
