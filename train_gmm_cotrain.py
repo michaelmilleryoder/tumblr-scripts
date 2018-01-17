@@ -13,13 +13,14 @@ from pprint import pprint
 
 # Load data
 print("Loading description data...")
-#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
-desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_sum.npy'
+desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
+#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_sum.npy'
 desc_emb = np.load(desc_emb_path)
 print()
 
 print("Loading text post data...")
-posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embed_sum.npy'
+posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embed_avg.npy'
+#posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embed_sum.npy'
 posts_emb = np.load(desc_emb_path)
 print()
 
@@ -60,7 +61,8 @@ clf.fit(X_arr)
 
 
 # Save model
-outpath = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_{}_desc_sum.pkl'.format(N_COMPS)
+outpath = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_{}_desc_avg.pkl'.format(N_COMPS)
+#outpath = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_{}_desc_sum.pkl'.format(N_COMPS)
 print("Saving model to {}...".format(outpath), end=' ')
 with open(outpath, 'wb') as f:
     pickle.dump(clf, f)
