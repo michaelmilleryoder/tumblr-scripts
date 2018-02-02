@@ -18,28 +18,27 @@ from pprint import pprint
 import pdb
 
 # INPUTS
+cotrain = False # select input data
 
 # Data file
-desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_embeddings_avg.npy'
-#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_embeddings_sum.npy'
-#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
-#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_sum.npy'
+desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_avg.npy'
 
 # Trained model file
-model_path = '/usr0/home/mamille2/tumblr/data/gmm_50_desc_avg.pkl'
-#model_path = '/usr0/home/mamille2/tumblr/data/gmm_50_desc_sum.pkl'
-#model_path = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_50_desc_avg.pkl'
-#model_path = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_50_desc_sum.pkl'
+if cotrain:
+    model_path = '/usr0/home/mamille2/tumblr/data/gmm_cotrain_50_desc_avg.pkl'
+else:
+    model_path = '/usr0/home/mamille2/tumblr/data/recent5_gmm_50_desc_avg.pkl'
 
 # Description file
-desc_path = '/usr0/home/mamille2/tumblr/data/en_blog_descriptions.pkl'
-#desc_path = '/usr0/home/mamille2/tumblr/data/desc_recent5.pkl'
+desc_path = '/usr0/home/mamille2/tumblr/data/desc_recent5.pkl'
 
 NUM_EXAMPLES_PRINT = 20
 
-# Outpath to print to
-outpath = model_path[:-4] + '_clusters.txt'
+# Outpath to print top cluster descriptions to
+outpath = model_path[:-4].replace('data', 'results') + '_clusters.txt'
 
+# Outpath to save dataset probabilities
+prob_outpath = model_path[:-4] + '_probs.npy'
 
 # LOAD INPUTS
 
@@ -82,10 +81,16 @@ sys.stdout.flush()
 probs = clf.predict_proba(desc_emb)
 print('done')
 
+# Save out probabilities
+np.save(prob_outpath, probs)
+print("Saved probabilities for descriptions to {}".format(prob_outpath))
+
 # Calculate silhouette score based on top prob cluster
 clusters_assgn = np.argsort(probs, axis=1)[:,-1] # top cluster probabilities for each datapoint
-pdg.set_trace()
-print("Silhouette score: {}".format(silhouette_score(desc_emb, clusters_assgn)))
+
+print("Calculating silhouette score...")
+print("\tSilhouette score: {}".format(silhouette_score(desc_emb, clusters_assgn, sample_size=min(len(clusters_assgn),int(1e5)))))
+
 
 def top_descs(probs, descs, k, order, outpath):
     """ Prints top k descriptions for each component"""

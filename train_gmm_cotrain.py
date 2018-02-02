@@ -13,13 +13,13 @@ from pprint import pprint
 
 # Load data
 print("Loading description data...")
-desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
-#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_sum.npy'
+desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_avg.npy'
+#desc_emb_path = '/usr0/home/mamille2/tumblr/data/desc_recent5_embeddings_avg.npy'
 desc_emb = np.load(desc_emb_path)
 print()
 
 print("Loading text post data...")
-posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embed_avg.npy'
+posts_emb_path = '/usr0/home/mamille2/tumblr/data/recent5posts_embeds_avg.npy'
 #posts_emb_path = '/usr0/home/mamille2/tumblr/data/halfday_5posts_embed_sum.npy'
 posts_emb = np.load(desc_emb_path)
 print()
@@ -51,7 +51,7 @@ if LOAD_EXISTING:
 
 else:
     #clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, warm_start=True, max_iter=MAX_ITERS)
-    clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, verbose_interval=1, max_iter=MAX_ITERS)
+    clf = GaussianMixtureCotrain(n_components=N_COMPS, verbose=2, verbose_interval=10, max_iter=MAX_ITERS)
 
 #X = desc_emb[BEG_DATAPT:BEG_DATAPT + N_DATAPTS,:]
 X_arr = [posts_emb, desc_emb] # desc embeddings last
