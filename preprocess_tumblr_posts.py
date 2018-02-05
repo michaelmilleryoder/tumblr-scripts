@@ -65,5 +65,6 @@ data['body_toks'] = list(map(preprocess_post, tqdm(data['body'].tolist())))
 # Save data
 print("Saving tokenized file...", end=' ')
 sys.stdout.flush()
-data.to_pickle('/usr0/home/mamille2/tumblr/data/textposts_recent100.pkl')
+ear
+ata.to_pickle('/usr0/home/mamille2/tumblr/data/textposts_recent100.pkl')
 print("done")
