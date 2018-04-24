@@ -97,7 +97,7 @@ terms = {
 terms['sexuality/gender'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
 
 excl_terms = {
-    'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18'],
+    'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18', '18+'],
 }
 
 # Combine terms in regex
