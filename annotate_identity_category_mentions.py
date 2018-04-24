@@ -6,8 +6,8 @@ from tqdm import tqdm
 
 
 # I/O files
-descs_path = '/usr0/home/mamille2/tumblr/data/list_descriptions_recent100_restr25.pkl'
-outpath = '/usr0/home/mamille2/tumblr/data/list_descriptions_recent100_restr25.pkl'
+descs_path = '/usr0/home/mamille2/tumblr/data/bootstrapped_list_descriptions_recent100.pkl'
+outpath = '/usr0/home/mamille2/tumblr/data/bootstrapped_list_descriptions_recent100.pkl'
 
 states_path = '/usr0/home/mamille2/tumblr/data/states.csv'
 nationalities_path = '/usr0/home/mamille2/tumblr/data/nationalities.txt'
@@ -115,9 +115,10 @@ len(descs)
 
 # Annotate for identity categories
 print("Annotating identity categories...")
-for cat in tqdm(terms):
+for cat in terms:
     print(cat)
-    descs[cat] = descs['segments_25_nopunct'].map(lambda x: has_category(cat, x, terms_re))
+    #descs[cat] = descs['segments_25_nopunct'].map(lambda x: has_category(cat, x, terms_re))
+    descs[cat] = list(map(lambda x: has_category(cat, x, terms_re), tqdm(descs['segments_25_nopunct'].tolist())))
 
 # Save annotated data
 pd.to_pickle(outpath)

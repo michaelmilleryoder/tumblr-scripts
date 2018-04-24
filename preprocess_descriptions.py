@@ -162,6 +162,22 @@ restr_desc_data = list_desc_data[list_desc_data[f'restr_segments_{char_limit}'].
 tqdm.write('done\n')
 tqdm.write(f'#restricted list descriptions: {len(restr_desc_data)}\n')
 
+# Remove punctuation from segments
+def split_rm_punct(segments):
+    """ Return segments split on punctuation, punctuation removed """
+    
+    new_segs = []
+    
+    for seg in segments:
+        new_seg = ' '.join(re.split(r'\W', seg))
+        new_seg = re.sub(r'\W', ' ', new_seg)
+        new_seg = re.sub(r'\s+', ' ', new_seg).strip()
+        new_segs.append(new_seg)
+        
+    return new_segs
+
+restr_desc_data['segments_25_nopunct'] = list(map(split_rm_punct, tqdm(rest_desc_data['restr_segments_25'].tolist())))
+
 tqdm.write(f"Saving list descriptions to {restr_desc_fpath}", end=' ')
 sys.stdout.flush()
 restr_desc_data.to_pickle(restr_desc_fpath)
