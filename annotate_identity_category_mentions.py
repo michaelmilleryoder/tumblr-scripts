@@ -1,17 +1,19 @@
 import pandas as pd
 import numpy as np
 import re
+import os
 
 from tqdm import tqdm
 
+data_dirpath = '/usr2/mamille2/tumblr/data'
 
 # I/O files
-descs_path = '/usr0/home/mamille2/tumblr/data/bootstrapped_list_descriptions_recent100.pkl'
-outpath = '/usr0/home/mamille2/tumblr/data/bootstrapped_list_descriptions_recent100.pkl'
+descs_path = os.path.join(data_dirpath, 'bootstrapped_list_descriptions_recent100.pkl')
+outpath = os.path.join(data_dirpath, 'bootstrapped_list_descriptions_recent100.pkl')
 
-states_path = '/usr0/home/mamille2/tumblr/data/states.csv'
-nationalities_path = '/usr0/home/mamille2/tumblr/data/nationalities.txt'
-ethnicities_path = '/usr0/home/mamille2/tumblr/data/ethnicities.txt'
+states_path = os.path.join(data_dirpath, 'states.csv')
+nationalities_path = os.path.join(data_dirpath, 'nationalities.txt')
+ethnicities_path = os.path.join(data_dirpath, 'ethnicities.txt')
 
 
 def has_category(cat, segments, terms_re):
@@ -110,8 +112,6 @@ for cat in terms:
 # Load blog descriptions
 print("Loading blog descriptions...")
 descs = pd.read_pickle(descs_path)
-print(descs.columns)
-len(descs)
 
 # Annotate for identity categories
 print("Annotating identity categories...")
@@ -121,5 +121,5 @@ for cat in terms:
     descs[cat] = list(map(lambda x: has_category(cat, x, terms_re), tqdm(descs['segments_25_nopunct'].tolist())))
 
 # Save annotated data
-pd.to_pickle(outpath)
+descs.to_pickle(outpath)
 print("Saved annotated data to {}".format(outpath))
