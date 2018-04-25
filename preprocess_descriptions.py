@@ -1,7 +1,7 @@
 import pandas as pd
 import re
 import numpy as np
-#from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup
 import urllib
 import pickle
 import os, sys
@@ -10,16 +10,20 @@ from collections import Counter
 import random
 from html.parser import HTMLParser
 from tqdm import tqdm
-#from multiprocessing import Pool
 import string
+import pickle
+import warnings
 #import spacy
 import pdb
 
 # INPUT
+#data_dirpath = '/usr0/home/mamille2/tumblr/data' 
+data_dirpath = '/usr2/mamille2/tumblr/data' 
 char_limit = 25
-desc_fpath = '/usr0/home/mamille2/tumblr/data/blog_descriptions_recent100.pkl'
-list_desc_fpath = '/usr0/home/mamille2/tumblr/data/list_descriptions_recent100.pkl'
-restr_desc_fpath = f'/usr0/home/mamille2/tumblr/data/list_descriptions_recent100_restr{char_limit}.pkl'
+desc_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
+list_desc_fpath = os.path.join(data_dirpath, 'list_descriptions_recent100.pkl')
+restr_desc_fpath = os.path.join(data_dirpath, f'list_descriptions_recent100_restr{char_limit}.pkl')
+sep_chars_fpath = os.path.join(data_dirpath, "common_sep_chars.pkl")
 
 # Load data
 tqdm.write("Loading data...", end=' ')
@@ -42,15 +46,24 @@ class MLStripper(HTMLParser):
     def get_data(self):
         return ' '.join(self.fed)
 
+def clean_html(html):
+    soup = BeautifulSoup(html, 'lxml')
+    for s in soup(['script', 'style']):
+        s.decompose()
+    return ' '.join(soup.stripped_strings)
+
 def strip_tags(html):
     s = MLStripper()
-    text = str(html).strip()
+    text = clean_html(str(html).strip())
     s.feed(text)
     return s.get_data()
 
 tqdm.write("Removing HTML tags...", end=' ')
 sys.stdout.flush()
-desc_data['parsed_blog_description'] = list(map(strip_tags, tqdm(desc_data['tumblr_blog_description'].tolist())))
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    desc_data['parsed_blog_description'] = list(map(strip_tags, tqdm(desc_data['tumblr_blog_description'].tolist())))
 
 # Remove empty parsed blogs
 desc_data = desc_data[desc_data['parsed_blog_description'].map(lambda x: len(x) > 0)]
@@ -105,7 +118,26 @@ tqdm.write("Identifying list descriptions...")
 
 ## Identify list descriptions
 seps = ['|', '/', '\\', '.']
+with open(sep_chars_fpath, 'rb') as f:
+    sep_counts = pickle.load(f)
+#seps = ['|', '/', '\\', '.']
+
+# Load separators, but drop alphanumeric ones
+seps = [s for s in sep_counts.keys() if len(s) > 0 and not re.search('[a-zA-Z0-9]', s)]
+
+# Optionally remove punctuation chars
+punc = ['.', ',', ';', '!', '?', "'", '"']
+seps = [s for s in seps if not any([p in s for p in punc])]
+
+# Add some escape characters for the re search
+check_chars = ['[', ']', '(', ')', '|']
+for i, s in enumerate(seps):
+    if len(s) > 1 and any([c in s for c in check_chars]):
+        s = s[0] + s[1:].replace(')', '\)').replace('(','\(').replace('[','\[').replace(']','\]').replace('|', '\|')
+        seps[i] = s
 desc_re = '|'.join([r'^.*\{0}.+\{0}.*$'.format(s) for s in seps])
+
+tqdm.write('{} total separators'.format(len(seps)))
 
 def is_list_desc(in_str):
     if re.search(desc_re, in_str):
