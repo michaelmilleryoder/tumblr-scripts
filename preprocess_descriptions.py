@@ -208,7 +208,7 @@ def split_rm_punct(segments):
         
     return new_segs
 
-restr_desc_data['segments_25_nopunct'] = list(map(split_rm_punct, tqdm(rest_desc_data['restr_segments_25'].tolist())))
+restr_desc_data['segments_25_nopunct'] = list(map(split_rm_punct, tqdm(restr_desc_data['restr_segments_25'].tolist())))
 
 tqdm.write(f"Saving list descriptions to {restr_desc_fpath}", end=' ')
 sys.stdout.flush()
