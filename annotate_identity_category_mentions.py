@@ -1,9 +1,10 @@
 import pandas as pd
+import pickle
 import numpy as np
 import re
 import os
 import sys
-
+import pdb
 from tqdm import tqdm
 
 
@@ -14,6 +15,8 @@ class IdentityAnnotator():
         self.states_path = os.path.join(data_dirpath, 'states.csv')
         self.nationalities_path = os.path.join(data_dirpath, 'nationalities.txt')
         self.ethnicities_path = os.path.join(data_dirpath, 'ethnicities.txt')
+        self.terms_path = os.path.join(data_dirpath, 'search_terms.pkl')
+        self.excl_terms_path = os.path.join(data_dirpath, 'excl_terms.pkl')
         self.terms, self.excl_terms, self.terms_re = self._pattern()
 
     def _pattern(self):
@@ -41,18 +44,15 @@ class IdentityAnnotator():
                        r'seventeen',
                        r'eighteen',
                        r'nineteen',
-                       r'twenty',
-                       r'thirty',
-                       r'forty',
-                       r'fifty',
-                       r'sixty'],
+                        r'(twenty|thirty|forty|fifty)([ -](one|two|three|four|five|six|seven|eight|nine))?',
+                       ],
         #         'location': [],
                 'gender': [r'male\b', r'female', 
-                            r'trans', r'ftm', r'mtf', r'cis',
+                            r'trans', r'ftm', r'mtf', r'\bcis',
                             r'girl\b', r'boy\b', r'\bman\b', r'guy\b', r'woman', r'gu+rl', r'gii+rl',
-                            r'non-binary', r'nonbinary', r'nb', r'agender', r'neutrois',
+                            r'non-binary', r'nonbinary', r'\bnb\b', r'agender', r'neutrois',
                             r'\bmom\b', r'\bdad\b', r'wife', r'husband', r'\bbrother\b', r'\bson\b', r'\bsister\b',
-                            r'bigender', r'lgbt'],
+                            r'bigender', r'lgbt', r'genderfluid', r'gender-fluid'],
                 'sexual orientation': 
                              [r'gay', r'straight', r'lesbian', r'\bhomo',
                                r'bisexual', r'\bbi\b', r'pansexual', r'\bpan\b',
@@ -82,49 +82,93 @@ class IdentityAnnotator():
         }
         terms['sexuality/gender'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
 
+        with open(self.terms_path, 'wb') as f:
+            pickle.dump(terms, f)
+
         excl_terms = {
-            'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18', '18+'],
+            'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18', '18\+', '18 \+', '18 or older', 'at least 18',
+                '24 hours',
+                r'(\d|[0-3][0-9])[\/\.-](\d|[0-3][0-9])[\/\.-](\d{2}|\d{4})(\W|$)',
+                r'(^|\D)\d{1,2}[\/\.-](\d{2}|\d{4})(\W|$)',
+                r'\d* ?(jan\w*|feb\w*|mar\w*|apr\w*|may|jun|june|jul|july|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*)[ ,.]*\d*[ \W,.]*\d*',
+                r'u?(c|g|s)w[1-3]?: ?\d*(kg|lb)?',
+                r'\d* ?(kg|lb|kilograms|pounds|days?)',
+                r'24[\/\* -]7',
+                r'\$\d*|\d*\$',
+                r'\d*(st|nd|rd|th)',
+                '30 rock'
+                ],
+            'gender': [
+                'transylvania',
+                'oitnb',
+                'stanbul',
+                'big brother',
+                ],
+            'sexual orientation': [
+                'ace maverick',
+                ],
+            'ethnicity/nationlity': [
+                'sioux falls',
+                'black lives matter',
+                'blacklivesmatter',
+                'black socks'
+                ],
+            'relationship status': [
+                'single verse',
+                'single-verse',
+                'single song',
+                'taken over',
+                ],
         }
+
+        with open(self.excl_terms_path, 'wb') as f:
+            pickle.dump(excl_terms, f)
 
         # Combine terms in regex
         terms_re = {}
         for cat in terms:
-            terms_re[cat] = r'|'.join(terms[cat])
+            terms_re[cat] = re.compile(r'|'.join(terms[cat]), re.IGNORECASE)
 
         return terms, excl_terms, terms_re
 
-    def _has_category(self, cat, desc, is_list_desc):
-        ans = False
+    def _has_category(self, cat, desc):
+        """ Annotates a description for an identity category.
+            Returns:
+                (list of term matches, boolean whether category is present)
+            """
         
-        if is_list_desc and not isinstance(desc, list):
-            return ans
+        if isinstance(desc, list):
+            desc = ' '.join(desc)
+        elif not isinstance(desc, str):
+            desc = str(desc)
 
-        elif not is_list_desc and not isinstance(desc, str):
-            return ans
-        
-        if is_list_desc:
-            ans = any(re.search(self.terms_re[cat], s) for s in desc)
-                
-            if cat in self.excl_terms:
-                for c in self.excl_terms[cat]:
-                    if any(c in s for s in desc):
-                        ans = False
+        # First filter out excluded patterns
+        if cat in self.excl_terms:
+            for p in self.excl_terms[cat]:
+                desc = re.sub(re.compile(p, re.IGNORECASE), ' ', desc)
+            
+        # Find pattern matches
+        matches = [m for m in re.finditer(self.terms_re[cat], desc)]
+        if len(matches) > 0:
+            match_text = []
+            for m in matches:
+                if any(m.groups()):
+                    gp_idx = np.nonzero(m.groups())[0][0] + 1
+                    match_text.append(m.group(gp_idx).strip())
+                else:
+                    match_text.append(m.group().strip())
+            matches = match_text
 
-        else:
-            ans = re.search(self.terms_re[cat], desc) is not None
+        presence = len(matches) > 0
 
-            if cat in self.excl_terms:
-                for c in self.excl_terms[cat]:
-                    if c in desc:
-                        ans = False
-                
-        return ans
+        return matches, presence
 
-    def annotate(self, descs, desc_colname, list_desc):
+    def annotate(self, descs, desc_colname):
         # Annotate for identity categories
         for cat in self.terms:
             print(cat)
-            descs[cat] = list(map(lambda desc: self._has_category(cat, desc, list_desc), tqdm(descs[desc_colname])))
+            descs[f'{cat}_terms'], descs[cat] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+            descs[cat]
 
         return descs
 
@@ -138,7 +182,6 @@ def main():
 
     # Settings
     desc_colname = 'parsed_blog_description'
-    list_desc = False
 
     print("Loading blog descriptions...", end=' ')
     sys.stdout.flush()
@@ -149,7 +192,7 @@ def main():
     print("Annotating identity categories...")
     sys.stdout.flush()
     ia = IdentityAnnotator(data_dirpath)
-    descs_annotated = ia.annotate(descs, desc_colname, list_desc)
+    descs_annotated = ia.annotate(descs, desc_colname)
     print('done.')
     sys.stdout.flush()
 
