@@ -7,12 +7,13 @@ import pdb
 
 # I/O
 data_dirpath = '/usr2/mamille2/tumblr/data'
-descs_path = os.path.join(data_dirpath, 'bootstrapped_list_descriptions_recent100_restr25.pkl')
+descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
 posts_path = os.path.join(data_dirpath, 'textposts_recent100.pkl')
-outpath = os.path.join(data_dirpath, 'bootstrapped_textposts_recent100_{}posts.pkl')
+outpath = os.path.join(data_dirpath, 'textposts_{}posts.pkl')
 
 # Settings
-post_thresholds = [100, 50]
+#post_thresholds = [100, 50]
+post_thresholds = [100]
 
 # Load data
 print("Loading data...", end=' ')
