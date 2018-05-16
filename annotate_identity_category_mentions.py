@@ -1,125 +1,203 @@
 import pandas as pd
+import pickle
 import numpy as np
 import re
-
+import os
+import sys
+import pdb
 from tqdm import tqdm
 
 
-# I/O files
-descs_path = '/usr0/home/mamille2/tumblr/data/bootstrapped_list_descriptions_recent100.pkl'
-outpath = '/usr0/home/mamille2/tumblr/data/bootstrapped_list_descriptions_recent100.pkl'
+class IdentityAnnotator():
 
-states_path = '/usr0/home/mamille2/tumblr/data/states.csv'
-nationalities_path = '/usr0/home/mamille2/tumblr/data/nationalities.txt'
-ethnicities_path = '/usr0/home/mamille2/tumblr/data/ethnicities.txt'
+    def __init__(self, data_dirpath):
 
+        self.states_path = os.path.join(data_dirpath, 'states.csv')
+        self.nationalities_path = os.path.join(data_dirpath, 'nationalities.txt')
+        self.ethnicities_path = os.path.join(data_dirpath, 'ethnicities.txt')
+        self.terms_path = os.path.join(data_dirpath, 'search_terms.pkl')
+        self.excl_terms_path = os.path.join(data_dirpath, 'excl_terms.pkl')
+        self.terms, self.excl_terms, self.terms_re = self._pattern()
 
-def has_category(cat, segments, terms_re):
-    ans = False
-    
-    if not isinstance(segments, list):
-        return ans
-    
-    ans = any(re.search(terms_re[cat], s) for s in segments)
-            
-    if cat in excl_terms:
-        for c in excl_terms[cat]:
-            if any(c in s for s in segments):
-                ans = False
-            
-    return ans
+    def _pattern(self):
 
+        # Load US states
+        states = [s.lower() for s in pd.read_csv(self.states_path)['State'].tolist()]
 
-# # Pattern matching for mentions of identity categories
+        # Load nationalities
+        with open(self.nationalities_path) as f:
+            nats = [nat.lower() for nat in f.read().splitlines() if (len(nat) > 3 and not nat in states)]
 
-# Load US states
-states = [s.lower() for s in pd.read_csv(states_path)['State'].tolist()]
+        # Load ethnicities
+        outlist = states + ['coast']
+        with open(self.ethnicities_path) as f:
+            eths = [e.split()[0].lower() for e in f.read().splitlines() if (len(e.split()[0]) > 4 and not e.split()[0].lower() in outlist)]
 
-# Load nationalities
-with open(nationalities_path) as f:
-    nats = [nat.lower() for nat in f.read().splitlines() if (len(nat) > 3 and not nat in states)]
+        # Regex patterns
+        terms = {
+                'age': [r'(?:[^-+\w]|^)([1-6]{1}[0-9]{1})[^-+0-9]|^([1-6]{1}[0-9]{1})$',
+                       r'twelve',
+                       r'thirteen',
+                       r'fourteen',
+                       r'fifteen',
+                       r'sixteen',
+                       r'seventeen',
+                       r'eighteen',
+                       r'nineteen',
+                        r'(twenty|thirty|forty|fifty)([ -](one|two|three|four|five|six|seven|eight|nine))?',
+                       ],
+        #         'location': [],
+                'gender': [r'male\b', r'female', 
+                            r'trans', r'ftm', r'mtf', r'\bcis',
+                            r'girl\b', r'boy\b', r'\bman\b', r'guy\b', r'woman', r'gu+rl', r'gii+rl',
+                            r'non-binary', r'nonbinary', r'\bnb\b', r'agender', r'neutrois',
+                            r'\bmom\b', r'\bdad\b', r'wife', r'husband', r'\bbrother\b', r'\bson\b', r'\bsister\b',
+                            r'bigender', r'lgbt', r'genderfluid', r'gender-fluid'],
+                'sexual orientation': 
+                             [r'gay', r'straight', r'lesbian', r'\bhomo',
+                               r'bisexual', r'\bbi\b', r'pansexual', r'\bpan\b',
+                               r'lgbt', r'queer',
+                               r'\bace\b', r'\basexual', r'aro-ace', r'aro/ace',
+                             ],
+                 'pronouns': [
+                     r'(?:\W|\b)she(?:\W|\b)', r'(?:\W|\b)her(?:\W|\b)',
+                     r'(?:\W|\b)he(?:\W|\b)', r'(?:\W|\b)him(?:\W|\b)',
+                     r'(?:\W|\b)they(?:\W|\b)', r'(?:\W|\b)them(?:\W|\b)',
+                     r'pronouns'
+                        ],
+                'personality type': [
+                    r'(?:i|e|a)(?:s|n)(?:t|f)(?:j|p)',
+                    r'introvert',
+                    r'extrovert', 
+                    r'ambivert',
+                    r'\b[0-9]w[0-9]\b',
+                    ],
+                'ethnicity/nationality': [r'\b{}\b'.format(el) for el in eths + nats] + 
+                        [r'latino', r'latina', r'cubana', r'cubano', r'chilena', r'chileno', r'mexicano', r'mexicana',
+                        r'palestinian'],
+                'relationship status': [
+                    r'taken', r'married', r'single', r'engaged', r'husband', r'spouse', r'wife', r'newlywed',
+                    r'in a rl', r'in rl', r'in a relationship',
+                ]
+        }
+        terms['sexuality/gender'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
 
-# Load ethnicities
-outlist = states + ['coast']
-with open(ethnicities_path) as f:
-    eths = [e.split()[0].lower() for e in f.read().splitlines() if (len(e.split()[0]) > 4 and not e.split()[0].lower() in outlist)]
+        with open(self.terms_path, 'wb') as f:
+            pickle.dump(terms, f)
 
-# Regex patterns
-terms = {
-        'age': [r'(?:[^-+\w]|^)([1-6]{1}[0-9]{1})[^-+0-9]|^([1-6]{1}[0-9]{1})$',
-               r'twelve',
-               r'thirteen',
-               r'fourteen',
-               r'fifteen',
-               r'sixteen',
-               r'seventeen',
-               r'eighteen',
-               r'nineteen',
-               r'twenty',
-               r'thirty',
-               r'forty',
-               r'fifty',
-               r'sixty'],
-#         'location': [],
-        'gender': [r'male\b', r'female', 
-                    r'trans', r'ftm', r'mtf', r'cis',
-                    r'girl\b', r'boy\b', r'\bman\b', r'guy\b', r'woman', r'gu+rl', r'gii+rl',
-                    r'non-binary', r'nonbinary', r'nb', r'agender', r'neutrois',
-                    r'\bmom\b', r'\bdad\b', r'wife', r'husband', r'\bbrother\b', r'\bson\b', r'\bsister\b',
-                    r'bigender', r'lgbt'],
-        'sexual orientation': 
-                     [r'gay', r'straight', r'lesbian', r'\bhomo',
-                       r'bisexual', r'\bbi\b', r'pansexual', r'\bpan\b',
-                       r'lgbt', r'queer',
-                       r'\bace\b', r'\basexual', r'aro-ace', r'aro/ace',
-                     ],
-         'pronouns': [
-             r'(?:\W|\b)she(?:\W|\b)', r'(?:\W|\b)her(?:\W|\b)',
-             r'(?:\W|\b)he(?:\W|\b)', r'(?:\W|\b)him(?:\W|\b)',
-             r'(?:\W|\b)they(?:\W|\b)', r'(?:\W|\b)them(?:\W|\b)',
-             r'pronouns'
+        excl_terms = {
+            'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18', '18\+', '18 \+', '18 or older', 'at least 18',
+                '24 hours',
+                r'(\d|[0-3][0-9])[\/\.-](\d|[0-3][0-9])[\/\.-](\d{2}|\d{4})(\W|$)',
+                r'(^|\D)\d{1,2}[\/\.-](\d{2}|\d{4})(\W|$)',
+                r'\d* ?(jan\w*|feb\w*|mar\w*|apr\w*|may|jun|june|jul|july|aug\w*|sep\w*|oct\w*|nov\w*|dec\w*)[ ,.]*\d*[ \W,.]*\d*',
+                r'u?(c|g|s)w[1-3]?: ?\d*(kg|lb)?',
+                r'\d* ?(kg|lb|kilograms|pounds|days?)',
+                r'24[\/\* -]7',
+                r'\$\d*|\d*\$',
+                r'\d*(st|nd|rd|th)',
+                '30 rock'
                 ],
-        'personality type': [
-            r'(?:i|e|a)(?:s|n)(?:t|f)(?:j|p)',
-            r'introvert',
-            r'extrovert', 
-            r'ambivert',
-            r'\b[0-9]w[0-9]\b',
-            ],
-        'ethnicity/nationality': [r'\b{}\b'.format(el) for el in eths + nats] + 
-                [r'latino', r'latina', r'cubana', r'cubano', r'chilena', r'chileno', r'mexicano', r'mexicana',
-                r'palestinian'],
-        'relationship status': [
-            r'taken', r'married', r'single', r'engaged', r'husband', r'spouse', r'wife', r'newlywed',
-            r'in a rl', r'in rl', r'in a relationship',
-        ]
-}
-terms['sexuality/gender'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
+            'gender': [
+                'transylvania',
+                'oitnb',
+                'stanbul',
+                'big brother',
+                ],
+            'sexual orientation': [
+                'ace maverick',
+                ],
+            'ethnicity/nationlity': [
+                'sioux falls',
+                'black lives matter',
+                'blacklivesmatter',
+                'black socks'
+                ],
+            'relationship status': [
+                'single verse',
+                'single-verse',
+                'single song',
+                'taken over',
+                ],
+        }
 
-excl_terms = {
-    'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18', '18+'],
-}
+        with open(self.excl_terms_path, 'wb') as f:
+            pickle.dump(excl_terms, f)
 
-# Combine terms in regex
-terms_re = {}
-for cat in terms:
-    terms_re[cat] = r'|'.join(terms[cat])
+        # Combine terms in regex
+        terms_re = {}
+        for cat in terms:
+            terms_re[cat] = re.compile(r'|'.join(terms[cat]), re.IGNORECASE)
 
-# ## Apply to corpus of descriptions
+        return terms, excl_terms, terms_re
 
-# Load blog descriptions
-print("Loading blog descriptions...")
-descs = pd.read_pickle(descs_path)
-print(descs.columns)
-len(descs)
+    def _has_category(self, cat, desc):
+        """ Annotates a description for an identity category.
+            Returns:
+                (list of term matches, boolean whether category is present)
+            """
+        
+        if isinstance(desc, list):
+            desc = ' '.join(desc)
+        elif not isinstance(desc, str):
+            desc = str(desc)
 
-# Annotate for identity categories
-print("Annotating identity categories...")
-for cat in terms:
-    print(cat)
-    #descs[cat] = descs['segments_25_nopunct'].map(lambda x: has_category(cat, x, terms_re))
-    descs[cat] = list(map(lambda x: has_category(cat, x, terms_re), tqdm(descs['segments_25_nopunct'].tolist())))
+        # First filter out excluded patterns
+        if cat in self.excl_terms:
+            for p in self.excl_terms[cat]:
+                desc = re.sub(re.compile(p, re.IGNORECASE), ' ', desc)
+            
+        # Find pattern matches
+        matches = [m for m in re.finditer(self.terms_re[cat], desc)]
+        if len(matches) > 0:
+            match_text = []
+            for m in matches:
+                if any(m.groups()):
+                    gp_idx = np.nonzero(m.groups())[0][0] + 1
+                    match_text.append(m.group(gp_idx).strip())
+                else:
+                    match_text.append(m.group().strip())
+            matches = match_text
 
-# Save annotated data
-pd.to_pickle(outpath)
-print("Saved annotated data to {}".format(outpath))
+        presence = len(matches) > 0
+
+        return matches, presence
+
+    def annotate(self, descs, desc_colname):
+        # Annotate for identity categories
+        for cat in self.terms:
+            print(cat)
+            descs[f'{cat}_terms'], descs[cat] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+            descs[cat]
+
+        return descs
+
+
+def main():
+
+    # I/O files
+    data_dirpath = '/usr2/mamille2/tumblr/data'
+    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+
+    # Settings
+    desc_colname = 'parsed_blog_description'
+
+    print("Loading blog descriptions...", end=' ')
+    sys.stdout.flush()
+    descs = pd.read_pickle(descs_path)
+    print('done.')
+    sys.stdout.flush()
+
+    print("Annotating identity categories...")
+    sys.stdout.flush()
+    ia = IdentityAnnotator(data_dirpath)
+    descs_annotated = ia.annotate(descs, desc_colname)
+    print('done.')
+    sys.stdout.flush()
+
+    descs_annotated.to_pickle(outpath)
+    print("Saved annotated data to {}".format(outpath))
+    sys.stdout.flush()
+
+if __name__=='__main__': main()
