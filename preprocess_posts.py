@@ -12,6 +12,7 @@ import pdb
 import spacy
 nlp = spacy.load('en')
 
+
 # I/O
 data_dirpath = '/usr2/mamille2/tumblr/data'
 #posts_fpath = os.path.join(data_dirpath, 'textposts_100posts.pkl') # selected to have 100 posts
@@ -20,16 +21,11 @@ text_outpath = posts_fpath[:-3] + 'txt'
 
 # Settings
 remove_usernames = False
-save_text_file = True
+save_text = True
+save_final = False # might be such a big file that don't want to add to pickle
+debug = False
 
-# Load posts
-print("Loading data...", end=' ')
-sys.stdout.flush()
-data = pd.read_pickle(posts_fpath)
-print('done')
-sys.stdout.flush()
 
-# Initialize tokenizer
 class MLStripper(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -73,34 +69,53 @@ def remove_usernames(data):
     data['body_toks_no_titles'] = list(map(lambda x: [t for t in x if not t in blog_names], tqdm(data['body_toks'].tolist())))
     data['body_toks_str_no_titles'] = data['body_toks_no_titles'].map(lambda x: ' '.join(x))
 
-def save_text_file(data, colname, outpath):
-    with open(outpath, 'w') as f:
-        for post in data[colname].tolist():
+def save_text_file(text_rows, outpath):
+    with open(outpath, 'a') as f:
+        for post in text_rows:
             f.write(post + '\n')
 
-# Tokenize, preprocess all posts
-print("Preprocessing posts...", end=' ')
-sys.stdout.flush()
-data['body_toks'] = list(map(preprocess_post, tqdm(data['body'].tolist())))
-data['body_str'] = data['body_toks'].map(lambda x: ' '.join(x))
-print('done.')
-sys.stdout.flush()
 
-# Remove usernames
-if remove_usernames:
-    remove_usernames(data)
-
-# Save text file (for eg training word embeddings)
-if save_text_file:
-    print(f"Writing text file...", end=' ')
+def main():
+    # Load posts
+    print("Loading data...", end=' ')
     sys.stdout.flush()
-    save_text_file(data, 'body_str') 
-    print("done")
+    if debug:
+        data = pd.read_pickle(posts_fpath).head(100)
+    else:
+        data = pd.read_pickle(posts_fpath)
+    print('done')
     sys.stdout.flush()
 
-# Save data
-print(f"Saving tokenized file to {posts_fpath}...", end=' ')
-sys.stdout.flush()
-data.to_pickle(posts_fpath)
-print("done")
-sys.stdout.flush()
+
+    # Tokenize, preprocess all posts
+    print("Preprocessing posts...", end=' ')
+    sys.stdout.flush()
+
+    data['body_toks'] = list(map(preprocess_post, tqdm(data['body'].tolist())))
+    data['body_str'] = data['body_toks'].map(lambda x: ' '.join(x))
+
+    print('done.')
+    sys.stdout.flush()
+
+    # Remove usernames
+    if remove_usernames:
+        remove_usernames(data)
+
+    # Save text file (for eg training word embeddings)
+    if save_text:
+        print(f"Writing text file to {text_outpath}...", end=' ')
+        sys.stdout.flush()
+        save_text_file(data['body_str'].tolist(), text_outpath) 
+        print("done")
+        sys.stdout.flush()
+
+    # Save data
+    if save_final:
+        print(f"Saving tokenized file to {posts_fpath}...", end=' ')
+        sys.stdout.flush()
+        data.to_pickle(posts_fpath)
+        print("done")
+        sys.stdout.flush()
+
+if __name__ == '__main__':
+    main()
