@@ -6,6 +6,7 @@ import os
 import sys
 import pdb
 from tqdm import tqdm
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 
 class IdentityAnnotator():
@@ -62,17 +63,18 @@ class IdentityAnnotator():
                        ],
                 'location': [r'\b{}\b'.format(el) for el in countries + states] + [
                         r'\bu\.?k\.?\b', r'\busa\b', r'\bu\.s\.?', r'méxico', r'\baus\b', r'\bmx\b', r'\bnz\b',
-                        r'\bca\b', r'\btx\b', r'\bfl\b', r'\bnc\b', r'\bpa\b', r'\bnj\b', r'\bnc\b', r'\bcali\b', r'\baz\b', r'\bal\b', r'\bsocal\b', r'\bwa\b', r'\bva\b', r'\bga\b', r'midwest',
-                        r'london', r'chicago', r'\bdc\b', r'\bny\b', r'\bnyc\b', r'new york', r'\bsan\b', r'istanbul', r'toronto', r'\batl\b', r'\bpnw\b',
+                        r'\bca\b', r'\btx\b', r'\bfl\b', r'\bnc\b', r'\bpa\b', r'\bnj\b', r'\bnc\b', r'\bcali\b', r'\baz\b', r'\bal\b', r'\bsocal\b', r'\bwa\b', r'\bva\b', r'\bga\b', r'midwest', r'\bct\b',
+                        r'london', r'chicago', r'\bdc\b', r'\bny\b', r'\bnyc\b', r'new york', r'\bsan\b', r'istanbul', r'toronto', r'\batl\b', r'\bpnw\b', r'philly', r'philadelphia', r'atlanta', r'berlin', r'cleveland', r'athens', r'tampa', r'hong kong', r'santa monica',
+                        r'umass',
                         r'\bnorth\b', r'\bsouth\b', r'\beast\b', r'\bwest\b',
                         ],
-                'gender': [r'male\b', r'female', 
+                'gender': [r'male\b', r'female\b', 
                             r'trans', r'ftm', r'mtf', r'\bcis',
                             r'girl\b', r'boy\b', r'\bman\b', r'guy\b', r'woman', r'gu+rl', r'gii+rl',
-                            r'non-binary', r'nonbinary', r'\bnb\b', r'agender', r'neutrois',
+                            r'non-binary', r'nonbinary', r'\bnb\b', r'agender', r'neutrois', r'androgynous',
                             r'\bmom\b', r'mum', r'\bdad\b', r'wife', r'husband', r'\bbrother\b', r'\bson\b', r'\bsister\b',
                             r'bigender', r'lgbt', r'genderfluid', r'gender-fluid',
-                            r'princess', r'queen', r'\blady\b', r'daughter', r'mommy', # added by bootstrapping
+                            r'\bprincess\b', r'queen', r'\blady\b', r'daughter', r'mommy', # added by bootstrapping
                             ],
                 'sexual orientation': 
                              [r'gay', r'straight', r'lesbian', r'\bhomo',
@@ -85,8 +87,10 @@ class IdentityAnnotator():
                      r'(?:\W|\b)she(?:\W|\b)', r'(?:\W|\b)her(?:\W|\b)',
                      r'(?:\W|\b)he(?:\W|\b)', r'(?:\W|\b)him(?:\W|\b)',
                      r'(?:\W|\b)they(?:\W|\b)', r'(?:\W|\b)them(?:\W|\b)',
+                     r'(?:\W|\b)xe(?:\W|\b)', r'(?:\W|\b)xem(?:\W|\b)',
                      r'it/its',
-                     r'pronouns'
+                     r'pronouns',
+                     r'theythem',
                         ],
                 'personality type': [
                     r'(?:i|e|a)(?:s|n)(?:t|f)(?:j|p)',
@@ -99,11 +103,19 @@ class IdentityAnnotator():
                     r'neutral', r'chaotic', r'lawful', # added by bootstrapping
                     ],
                 'ethnicity/nationality': [r'\b{}\b'.format(el) for el in eths + nats] + 
-                        [r'latino', r'latina', r'cubana', r'cubano', r'chilena', r'chileno', r'mexicano', r'mexicana', r'filipina',
-                        r'palestinian'],
+                        [r'latino', r'latina', r'cubana', r'cubano', r'chilena', r'chileno', r'mexicano', r'mexicana', r'filipina', r'afrolatin',
+                        r'palestinian',
+                        r'spaniard',
+                        r'colored',
+                        r'welshie',
+                        r'swede',
+                        r'scandinavian',
+                        r'yemeni',
+                        ],
                 'relationship status': [
                     r'taken', r'married', r'single', r'engaged', r'husband', r'spouse', r'wife', r'newlywed',
                     r'in a rl', r'in rl', r'in a relationship',
+                    r'couple',
                 ],
                 'roleplay': [
                     r'roleplay', r'\brp\b', r'selective', r'semi-selective', r'm!a', r'\boc\b', r'\bpenned\b', r'muse',
@@ -111,26 +123,45 @@ class IdentityAnnotator():
                 'fandoms': [
                     r'\bfan\b', r'kpop', r'fandom', r'marvel', r'fandoms', r'\bstan\b', r'multi-fandom', r'multiship', r'multi-ship',
                     r'fanatic',
-                    r'k-pop', r'bts', r'exo', r'army', r'got7', r'yuri', r'undertale', r'yaoi', r'riverdale', r'5sos', r'bnha',
+                    r'k-pop', r'bts', r'exo', r'army', r'got7', r'yuri', r'undertale', r'yaoi', r'riverdale', r'5sos', r'bnha', r'ajin: ?demi-human', r'overwatch', r'tao trash',
                     r'star wars', r'\brey\b', r'\breylo', r'universe', r'multiverse', r'canon', r'verse',
-                    r'voltron', r'otaku', r'\bshipper', r'\bships', r'sims', r'multiship', 'multi-ship', 'single-ship',
+                    r'voltron', r'otaku', r'twd', r'twewy', r'ereri', r'youjo senki', r'asami sato', r'zenyatta', r'bahamut',
+                    r'\bshipper', r'\bships', r'sims', r'multiship', 'multi-ship', 'single-ship', r'i ship',
                     r'swiftie',
-                    r'\bphan\b',
-                    r'hamilton',
+                    r'\bphan\b', r'phantastic',
+                    r'hamilton', r'hamiltrash',
                     r'series',
-                    r'potterhead', r'hp', r'harry potter',
+                    r'potterhead', r'hp', r'harry potter', r'hogwarts',
+                    r'back to the future',
+                    r'homestuck',
                     r'pokemon',
-                    r'sherlock',
-                    r'disney',
+                    r'sherlock', r'tjlc',
+                    r'dw/tw',
+                    r'disney', r'beauty and the beast',
+                    r'power rangers',
+                    r'task force x',
+                    r'supernatural diaries',
+                    r'comic', r'soulsword', r'marvel', r'\bmcu\b',
+                    r'\bwwe\b',
+                    r'shaladin',
+                    r'supercorp',
                 ],
                 'interests': [
-                    r'\barts?\b', r'music', r'anime', r'books', r'photography', r'fashion', r'memes', r'nature', r'food',
-                    r'coffee', r'\bcats?\b', r'aesthetics?', r'games', r'draw', r'writing', r'book', r'travel',
-                    r'tv', r'poetry', r'write', r'manga', r'pics', r'horror', r'design',
-                    r'tattoos', r'movies', r'dogs?', r'\btea\b', r'bands', r'makeup', r'animals?', r'memes?', 
-                    r'drawing', r'metal', r'fitness', r'history', r'science', r'film', r'gifs', r'photos', r'reading',
-                    r'comics', r'lifestyle', r'weed', r'soccer', r'gaming', r'hair', r'family', r'pictures',
+                    r'\barts?\b', r'\bmusic\b', r'anime', r'books', r'photography', r'fashion', r'memes', r'nature', r'food',
+                    r'coffee', r'\bcats?\b', r'aesthetics?', r'games', r'\bdraw', r'writing', r'book', r'travel\b', r'landscapes',
+                    r'tv', r'poetry', r'write', r'manga', r'horror', r'design',
+                    r'tattoos', r'movies', r'dogs?', r'\btea\b', r'\bbands', r'makeup', r'animals?', r'memes?', 
+                    r'drawing', r'\bmetal\b', r'fitness', r'history', r'science', r'film', r'gifs', r'photos', r'reading',
+                    r'comics', r'lifestyle', r'weed', r'soccer', r'gaming', r'hair', r'family',
                     r'psychology', r'cosplay', r'theatre', r'\blaw\b', r'pizza',
+                    r'\bmeche\b', r'umbrellas', r'nutrition',
+                    r'\bpies\b', r'\bdesserts\b',
+                    r'cute (things|stuff)',
+                    r'hockey', r'hunting', r'\brunning\b', r'\bbasketball\b'
+                    r'\bboho\b', r'geek chic',
+                    r'\brobot\b',
+                    r'\bpiano\b', r'\bclarinet\b',
+                    r'\binterests\b',
                 ],
                 'weight': [
                     r'\b(?:c|g|s|h|l)w[1-3]?\b', r'\blbs?\b', r'\bkgs?\b', r'pounds', r'kilograms',
@@ -163,15 +194,22 @@ class IdentityAnnotator():
             'gender': [
                 'transylvania',
                 'protect trans',
+                'transfiguration',
+                'transform',
                 'trans rights',
                 'transgressions?',
+                'transition',
                 'transatlantic',
+                r'translat',
                 'oitnb',
                 'stanbul',
                 'big brother',
                 r'iron man',
                 r'ironman',
                 r"mommy's",
+                r"supercorp/supergirl",
+                r"gray-man",
+                r'husbands',
                 ],
             'sexual orientation': [
                 'ace maverick',
@@ -228,11 +266,22 @@ class IdentityAnnotator():
                 'study (english|spanish|french|german|italian)',
                 'greek mythology',
                 r'colou?red',
+                r'korean bands',
+                r'(american|french) revolution',
+                r'(japanese|chinese|mexican|french) food',
+                r'trainer black',
+                r'pokemon black',
+                r'into English',
+                r'scottish header',
+                r'nail polish',
+                r'in black',
+                r'remedial (spanish|french)',
                 ],
             'relationship status': [
                 'single verse',
                 'single-verse',
                 'single song',
+                r'single tone',
                 'single ship',
                 'single-ship',
                 'single candle',
@@ -241,6 +290,8 @@ class IdentityAnnotator():
                 'taken from',
                 'taken on',
                 'taken with',
+                'midwife',
+                r'couple of',
                 ],
             'fandoms': [
                 r'reverse',
@@ -256,6 +307,9 @@ class IdentityAnnotator():
                 r'al-',
                 r'tabarak wa',
                 r'-san',
+                r'(argentina|brazil) nt',
+                r'dc comics',
+                r'dc and marvel',
                 ],
             'personality type': [
                 r'bestpaper',
@@ -267,6 +321,7 @@ class IdentityAnnotator():
                 ],
             'interests': [
                 r'signature',
+                r'tvmblr',
                 ],
         }
 
@@ -312,41 +367,75 @@ class IdentityAnnotator():
 
         return matches, presence
 
-    def annotate(self, descs, desc_colname):
+    def annotate(self, descs, desc_colname, eval_mode):
         # Annotate for identity categories
         for i,cat in enumerate(sorted(self.terms)):
-            print(f'{cat} ({i}/{len(self.terms)})')
-            descs[f'{cat}_terms'], descs[cat] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+            print(f'{cat} ({i+1}/{len(self.terms)})')
+            if eval_mode:
+                descs[f'{cat}_terms'], descs[f'{cat}_pred'] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+            else:
+                descs[f'{cat}_terms'], descs[cat] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
             descs[cat]
 
         return descs
 
+    def evaluate(self, descs):
+        """ Assumes predicted categories end with '_pred'
+            Assumes annotations are 1.0 (True) and NaN (False)
+            Prints out prec, rec, f1 for each category
+        """
+
+        outlines = []
+
+        for cat in self.terms:
+            actual = [a==1 for a in descs[cat]]
+            prec = precision_score(actual, descs[f'{cat}_pred'])
+            rec = recall_score(actual, descs[f'{cat}_pred'])
+            f1 = f1_score(actual, descs[f'{cat}_pred'])
+            outlines.append([cat, prec, rec, f1])
+
+        scores = pd.DataFrame(outlines, columns=['category', 'precision', 'recall', 'f1']) 
+
+        print(scores)
 
 def main():
 
     # I/O files
     data_dirpath = '/usr2/mamille2/tumblr/data'
-    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
-    outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
+    descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
+    #outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
+    outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
 
     # Settings
     desc_colname = 'parsed_blog_description'
+    eval_mode = True # if evaluating against hand annotations
 
     print("Loading blog descriptions...", end=' ')
     sys.stdout.flush()
-    descs = pd.read_pickle(descs_path)
+    if descs_path.endswith('.csv'):
+        descs = pd.read_csv(descs_path)
+    elif descs_path.endswith('.pkl'):
+        descs = pd.read_pickle(descs_path)
+    else:
+        raise ValueError("Descriptions path not csv or pickle.")
     print('done.')
     sys.stdout.flush()
 
     print("Annotating identity categories...")
     sys.stdout.flush()
     ia = IdentityAnnotator(data_dirpath)
-    descs_annotated = ia.annotate(descs, desc_colname)
+    descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
     print('done.')
     sys.stdout.flush()
 
     descs_annotated.to_pickle(outpath)
     print("Saved annotated data to {}".format(outpath))
     sys.stdout.flush()
+
+    if eval_mode:
+        ia.evaluate(descs)
 
 if __name__=='__main__': main()
