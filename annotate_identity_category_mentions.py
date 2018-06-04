@@ -168,7 +168,8 @@ class IdentityAnnotator():
                     r'weight', r'\bfat\b', r'\bthin\b', r'\bana\b', r'anorexic', r'anorexia', r'bulimia', r'eating disorders?',
                 ],
         }
-        terms['sexuality/gender'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
+        terms['gender/sexuality'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
+        terms['roleplay/fandoms'] = terms['roleplay'] + terms['fandoms']
 
         with open(self.terms_path, 'wb') as f:
             pickle.dump(terms, f)
@@ -402,16 +403,16 @@ def main():
 
     # I/O files
     data_dirpath = '/usr2/mamille2/tumblr/data'
-    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
     #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
-    descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
-    #outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
+    outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
     #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
-    outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
+    #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
 
     # Settings
     desc_colname = 'parsed_blog_description'
-    eval_mode = True # if evaluating against hand annotations
+    eval_mode = False # if evaluating against hand annotations
 
     print("Loading blog descriptions...", end=' ')
     sys.stdout.flush()

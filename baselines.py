@@ -10,17 +10,30 @@ from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_score, precision_recall_fscore_support, cohen_kappa_score
+from sklearn.model_selection import train_test_split
 import argparse
+import datetime
+
+from keras.preprocessing.text import Tokenizer, text_to_word_sequence
+from keras.models import Sequential, load_model
+from keras.layers import Dense, Embedding
 
 
 class DataHandler():
 
-    def __init__(self, data_dirpath,
+    def __init__(self, data_dirpath, 
+                name=datetime.datetime.now().strftime('%Y-%m-%dT%H-%M'),
+                input_type='text',
                 max_num_posts=100, 
                 max_post_length=200, 
                 max_num_words = 50000,
                 test_dev_split = 0.1):
 
+        if not input_type in ['text', 'tags']:
+            raise ValueError('Input type must be "text" or "tags"')
+    
+        self.name = name
+        self.input_type = input_type
         self.max_num_posts = max_num_posts
         self.max_post_length = max_post_length
         self.max_num_words = max_num_words
@@ -34,6 +47,13 @@ class DataHandler():
         self.y = {} # dicts of word indices
         self.data_dirpath = data_dirpath # where will save processed data
 
+    def load_data(self, descs_filepath, posts_filepath):
+
+        # Load descriptions
+        self.descs = pd.read_pickle(descs_filepath)
+        self.posts = pd.read_pickle(posts_filepath)
+        self.tids = sorted(self.descs['tumblog_id'].tolist())
+
     def load_processed_data(self, name):
         """ Load preprocessed DataHandler object """
 
@@ -42,6 +62,76 @@ class DataHandler():
             tmp = pickle.load(f)
 
         self.__dict__.update(tmp)
+
+    def process_data(self, outcome_colname='all', save=True):
+        """ Preprocesses data and returns vectorized form """
+        print("Preprocessing data...", end=" ")
+        sys.stdout.flush()
+
+        # Get posts
+        if self.input_type == 'text':
+            input_colname = 'body_toks_str_no_titles'
+        elif self.input_type == 'tags':
+            input_colname = 'parsed_tags_minfreq3'
+        posts_by_blog = [[p for p in self.posts[self.posts['tumblog_id']==tid][input_colname].tolist()] for tid in self.tids] # list of 100 posts/user
+        all_posts = [p for posts in posts_by_blog for p in posts]
+
+        # Tokenize posts, build vocab
+        if self.input_type == 'text':
+            tokenizer = Tokenizer(num_words=self.max_num_words,   filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n“”')
+        elif self.input_type == 'tags':
+            tokenizer = Tokenizer(filters='') # don't strip punctuation, but lowercase
+        tokenizer.fit_on_texts(all_posts)
+        self.word_index = tokenizer.word_index
+        self.vocab = list(self.word_index.keys())[:self.max_num_words]
+
+        # Fill in posts with word IDs from vocab
+        data = np.zeros((len(posts_by_blog), self.max_num_posts, self.max_post_length), dtype='int32')
+
+        for i, posts in enumerate(posts_by_blog):
+            for j, post in enumerate(posts):
+                if j < self.max_num_posts:
+                    wordTokens = text_to_word_sequence(post)
+                    k=0
+                    for _, word in enumerate(wordTokens):
+                        if k < self.max_post_length and word in self.word_index and self.word_index[word] < self.max_num_words:
+                            data[i,j,k] = tokenizer.word_index[word]
+                            k=k+1                    
+
+        # Prepare description categories (labels)
+        if outcome_colname == 'all':
+            cols = self.descs.columns.tolist()
+            self.cats = sorted([c for c in cols[cols.index('parsed_blog_description')+1:] if not c.endswith('terms')])
+
+        else:
+            self.cats = [outcome_colname] # can only handle 1 colname
+        
+        labels = np.array(list(zip(*[self.descs[cat] for cat in self.cats])))
+
+        # Shuffle, split into train/dev/test
+        test_size = int(self.test_dev_split * len(data))
+        X_train, self.X['test'], y_train, self.y['test'], \
+                tids_train, self.tids_split['text'] = \
+            train_test_split(data, labels, self.tids, test_size=test_size, random_state=0)
+
+        self.X['train'], self.X['dev'], self.y['train'], self.y['dev'], tids_train, self.tids_split['dev'] = train_test_split(X_train, y_train, tids_train, test_size=test_size, random_state=0)
+
+        # Save vectorized data
+        if save:
+            vectorized_datapath = os.path.join(self.data_dirpath, f"{self.name}_preprocessed_data.pkl")
+
+            dict_save = self.__dict__.copy()
+            dict_save.pop('descs')
+            dict_save.pop('posts')
+
+            with open(vectorized_datapath, 'wb') as f:
+                pickle.dump(dict_save, f)
+
+        print("done.")
+        sys.stdout.flush()
+
+        print(f"Saved preprocessed data to {vectorized_datapath}")        
+        sys.stdout.flush()
 
 
 def set_scores(preds, actual):
@@ -78,6 +168,7 @@ def category_scores(preds, y, cats):
 
 
 def evaluate(preds, y, cats, output_dirpath, clf_name):
+    """ Evaluates, saves and returns scores """
 
     scores = {}
 
@@ -104,13 +195,15 @@ def evaluate(preds, y, cats, output_dirpath, clf_name):
     return scores
 
 def vectorize(dh, feats='unigrams'):
+
+    """ Uses word indices of posts, which by default is stored as lists in dh.X """   
+
     word_inds = {}
     
     for fold in dh.X:
         word_inds[fold] = [np.array_str(d.ravel())[1:-1] for d in dh.X[fold]] # space-separated string of word indices for each list of posts
 
     feats_ngram_range = {'unigrams': (1,1), 'bigrams': (1,2)}
-    #vec = CountVectorizer(token_pattern='\b\d+\b', ngram_range=feats_ngram_range[feats])
     vec = CountVectorizer(token_pattern='\d+', ngram_range=feats_ngram_range[feats])
 
     vec.fit(word_inds['train'])
@@ -120,29 +213,67 @@ def vectorize(dh, feats='unigrams'):
             vec.transform(word_inds['test']))
 
 
+def feedforward(X_train, y_train, X_dev, y_dev, X_test, vocab_size, max_post_length, n_cats, output_dirpath):
+    model = Sequential()
+    model.add(Embedding(vocab_size, 300, input_length = max_post_length))
+    model.add(Dense(128), activation='sigmoid')
+    model.add(Dense(64), activation='sigmoid')
+    model.add(Dense(len(n_cats)), activation='sigmoid')
+
+    out_modelpath = os.path.join(output_dirpath, 'feedforward.h5')
+    model.fit(X_train, y_train, epochs=100, batch_size=10, callbacks=[ModelCheckpoint(out_modelpath, monitor='val_acc', verbose=1, save_best_only=True)])
+
+    # Load best model
+    model = load_model(out_modelpath)
+
+    return model.predict(X_test)
+
 def main():
 
     parser = argparse.ArgumentParser(description="Train and run baselines")
     parser.add_argument('--base-dirpath', nargs='?', help="Path to parent directory with data, where should save models and output directories", default='/usr0/home/mamille2/tumblr/')
     parser.add_argument('--model-name', nargs='?', dest='model_name', help="Name of model comparing with, whose output dir will save baseline results in")
+    parser.add_argument('--dataset-name', nargs='?', dest='dataname', help="Name to save preprocessed data to")
+    parser.add_argument('--outcome', nargs='?', dest='outcome_colname', help="Name of column/s to predict")
     parser.add_argument('--load-data', nargs='?', dest='load_dataname', help="Name of preprocessed data to load")
+    parser.add_argument('--input-type', nargs='?', dest='input_type', help="Type of input data: {text, tags}", default='text')
+    parser.add_argument('--neural', dest='neural', help='Run neural baselines in addition to non-neural', action='store_true')
     args = parser.parse_args()
 
     base_dirpath = args.base_dirpath
     data_dirpath = os.path.join(base_dirpath, 'data')
     output_dirpath = os.path.join(base_dirpath, 'output', args.model_name)
 
-    dh = DataHandler(data_dirpath)
+    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    posts_path = os.path.join(data_dirpath, 'textposts_100posts.pkl')
 
-    print("Loading preprocessed data...", end=" ")
-    sys.stdout.flush()
-    #dh.load_processed_data(train_data_dirpath, test_data_dirpath, train_prefix=train_prefix, test_prefix=test_prefix)
-    dh.load_processed_data(args.load_dataname)
-    print("done.")
-    sys.stdout.flush()
+    if args.outcome_colname:
+        outcome_colname = args.outcome_colname
+    else:
+        outcome_colname = 'all'
 
-    #X_train, y_train, X_dev, y_dev, X_test, y_test = dh.process_data('tweet', 'label', 
-    #                feats=feats, multiclass_transform=multiclass_transform) 
+
+    if args.load_dataname:
+        dh = DataHandler(data_dirpath)
+
+        print("Loading preprocessed data...", end=" ")
+        sys.stdout.flush()
+        #dh.load_processed_data(train_data_dirpath, test_data_dirpath, train_prefix=train_prefix, test_prefix=test_prefix)
+        dh.load_processed_data(args.load_dataname)
+        print("done.")
+        sys.stdout.flush()
+
+    else:
+        print("Loading data...", end=' ')
+        sys.stdout.flush()
+        if args.dataname:
+            dh = DataHandler(data_dirpath, name=args.dataname, max_num_words=100000)
+        else:
+            dh = DataHandler(data_dirpath, max_num_words=100000)
+        dh.load_data(descs_path, posts_path)
+        print("done.")
+        sys.stdout.flush()
+        dh.process_data(outcome_colname=outcome_colname)
 
     # Vectorize
     X_train, X_dev, X_test = vectorize(dh)
@@ -150,26 +281,41 @@ def main():
     clfs = {'logistic_regression': LogisticRegression(),
             'svm': LinearSVC()}
 
-    for clf_name, clf in clfs.items():
-        print(f"Training classifier {clf_name}...", end=" ")
+    if args.neural:
+        # Run neural baselines
+        clf_name = 'feedfoward neural network'
+        print(f"Training {clf_name}...", end=" ")
         sys.stdout.flush()
-
-        if len(dh.cats) > 1:
-            clf = OneVsRestClassifier(clf)
-        clf.fit(X_train, y_train)
+        preds = feedforward(X_train, y_train, X_dev, y_dev, X_test, len(dh.vocab), dh.max_post_length, len(outcome_colname), output_dirpath)
         print("done.")
         sys.stdout.flush()
-
-        print("Evaluating classifier...")
+        print(f"Evaluating {clf_name}...", end=" ")
         sys.stdout.flush()
-        preds = clf.predict(X_test)
-
         results = evaluate(preds, y_test, dh.cats, output_dirpath, clf_name)
-        print(results)
-
         print("done.")
         sys.stdout.flush()
-        print()
+
+    else:
+        # Run non-neural baselines
+        for clf_name, clf in clfs.items():
+            print(f"Training classifier {clf_name}...", end=" ")
+            sys.stdout.flush()
+
+            if len(dh.cats) > 1:
+                clf = OneVsRestClassifier(clf)
+            clf.fit(X_train, y_train)
+            print("done.")
+            sys.stdout.flush()
+
+            print("Evaluating classifier...", end=" ")
+            sys.stdout.flush()
+            preds = clf.predict(X_test)
+
+            results = evaluate(preds, y_test, dh.cats, output_dirpath, clf_name)
+
+            print("done.")
+            sys.stdout.flush()
+            print()
 
 if __name__ == '__main__':
     main()
