@@ -7,6 +7,8 @@ import sys
 import pdb
 from tqdm import tqdm
 from sklearn.metrics import precision_score, recall_score, f1_score
+from multiprocessing import Pool
+from itertools import repeat
 
 
 class IdentityAnnotator():
@@ -369,14 +371,21 @@ class IdentityAnnotator():
         return matches, presence
 
     def annotate(self, descs, desc_colname, eval_mode):
+        """ By default, does multiprocessing """
+
+        pool = Pool(5)
+
         # Annotate for identity categories
         for i,cat in enumerate(sorted(self.terms)):
             print(f'{cat} ({i+1}/{len(self.terms)})')
             if eval_mode:
                 descs[f'{cat}_terms'], descs[f'{cat}_pred'] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
             else:
-                descs[f'{cat}_terms'], descs[cat] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
-            descs[cat]
+                #descs[f'{cat}_terms'], descs[cat] = list(zip(*list(pool.map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+                descs[f'{cat}_terms'], descs[cat] = list(zip(*list(pool.starmap(multiprocess_has_category, 
+        zip(repeat(self), 
+            repeat(cat),
+            tqdm(descs[desc_colname].tolist()))))))
 
         return descs
 
@@ -403,10 +412,12 @@ def main():
 
     # I/O files
     data_dirpath = '/usr2/mamille2/tumblr/data'
-    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
+    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
     #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
     #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
-    outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
+    outpath = descs_path
+    #outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
     #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
     #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
 
@@ -428,7 +439,8 @@ def main():
     print("Annotating identity categories...")
     sys.stdout.flush()
     ia = IdentityAnnotator(data_dirpath)
-    descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
+    #descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
+    descs_annotated = multiprocess_annotate(ia, descs, desc_colname, eval_mode)
     print('done.')
     sys.stdout.flush()
 
@@ -438,5 +450,12 @@ def main():
 
     if eval_mode:
         ia.evaluate(descs)
+
+def multiprocess_annotate(ia, descs, desc_colname, eval_mode):
+    descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
+    return descs_annotated
+
+def multiprocess_has_category(ia, cat, desc):
+    return ia._has_category(cat, desc)
 
 if __name__=='__main__': main()

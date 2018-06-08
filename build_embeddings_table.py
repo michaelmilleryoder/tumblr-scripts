@@ -8,10 +8,11 @@ from keras.preprocessing.text import Tokenizer
 
 # I/O
 data_dirpath = '/usr2/mamille2/tumblr/data'
-embs_fpath = '/usr2/kmaki/tumblr/top100posts-131M_fasttext-embeddings_3-6.bin.bin' # ~100GB RAM
+embs_fpath = '/usr2/mamille2/fastText/tumblr_recent100_300.bin' #
+#embs_fpath = '/usr2/kmaki/tumblr/top100posts-131M_fasttext-embeddings_3-6.bin.bin' # ~100GB RAM
 #embs_fpath = '/usr2/kmaki/tumblr/top100posts-131M_fasttext-embeddings_3-6.bin.vec' # ~40GB RAM
 posts_fpath = os.path.join(data_dirpath, 'textposts_100posts.pkl')
-out_fpath = os.path.join(data_dirpath, 'blog_descriptions_100posts.npy') # for lookup table of embeddings
+out_fpath = os.path.join(data_dirpath, 'blog_descriptions_100posts_300dim.npy') # for lookup table of embeddings
 
 # Settings
 MAX_VOCAB_SIZE = 100000
