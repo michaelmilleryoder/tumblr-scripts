@@ -13,11 +13,22 @@ from sklearn.metrics import f1_score, accuracy_score, recall_score, precision_sc
 from sklearn.model_selection import train_test_split
 import argparse
 import datetime
+os.environ['KERAS_BACKEND']='theano'
+
+# Use CPU
+#os.environ['THEANO_FLAGS'] = 'device=cpu'
+
+# Use GPU
+os.environ['CUDA_VISIBLE_DEVICES']='3'
+os.environ['THEANO_FLAGS'] = 'device=cuda'
+os.environ['THEANO_FLAGS'] = 'floatX=float32'
+os.environ['LD_LIBRARY_PATH'] = '/usr/local/cuda/lib64'
 
 from keras.preprocessing.text import Tokenizer, text_to_word_sequence
 from keras.models import Sequential, load_model
-from keras.layers import Dense, Embedding
-
+from keras.layers import Dense, Embedding, Flatten
+from keras.callbacks import ModelCheckpoint
+from keras import optimizers
 
 class DataHandler():
 
@@ -189,14 +200,26 @@ def evaluate(preds, y, cats, output_dirpath, clf_name):
     outlines = pd.DataFrame(outlines, columns=['category'] + metrics)
     if not os.path.exists(output_dirpath):
         os.mkdir(output_dirpath)
-    outpath = os.path.join(output_dirpath, f"{clf_name}_scores.csv")
+    outpath = os.path.join(output_dirpath, f"{clf_name.replace(' ', '_')}_scores.csv")
     outlines.to_csv(outpath, index=False)
 
     return scores
 
-def vectorize(dh, feats='unigrams'):
+def vectorize_tags(dh):
 
-    """ Uses word indices of posts, which by default is stored as lists in dh.X """   
+    """ Flatten post tags for simple blog representation of tags used """
+
+    flattened_X = {}
+    for fold, data in dh.X.items():
+        flattened_X[fold] = data.reshape(data.shape[0], data.shape[1]*data.shape[2])
+
+    return flattened_X['train'], \
+            flattened_X['dev'], \
+            flattened_X['test']
+
+def vectorize_text(dh, feats='unigrams', n_feats=100000):
+
+    """ For vectorizing ngrams. Uses word indices of posts, which by default is stored as lists in dh.X """
 
     word_inds = {}
     
@@ -204,7 +227,7 @@ def vectorize(dh, feats='unigrams'):
         word_inds[fold] = [np.array_str(d.ravel())[1:-1] for d in dh.X[fold]] # space-separated string of word indices for each list of posts
 
     feats_ngram_range = {'unigrams': (1,1), 'bigrams': (1,2)}
-    vec = CountVectorizer(token_pattern='\d+', ngram_range=feats_ngram_range[feats])
+    vec = CountVectorizer(token_pattern='\d+', ngram_range=feats_ngram_range[feats], max_features=n_feats)
 
     vec.fit(word_inds['train'])
 
@@ -213,20 +236,44 @@ def vectorize(dh, feats='unigrams'):
             vec.transform(word_inds['test']))
 
 
-def feedforward(X_train, y_train, X_dev, y_dev, X_test, vocab_size, max_post_length, n_cats, output_dirpath):
-    model = Sequential()
-    model.add(Embedding(vocab_size, 300, input_length = max_post_length))
-    model.add(Dense(128), activation='sigmoid')
-    model.add(Dense(64), activation='sigmoid')
-    model.add(Dense(len(n_cats)), activation='sigmoid')
+def feedforward(X_train, y_train, X_dev, y_dev, X_test, vocab_size, max_post_length, max_num_posts, n_cats, model_dirpath):
 
-    out_modelpath = os.path.join(output_dirpath, 'feedforward.h5')
-    model.fit(X_train, y_train, epochs=100, batch_size=10, callbacks=[ModelCheckpoint(out_modelpath, monitor='val_acc', verbose=1, save_best_only=True)])
+    """ Train feedforward neural network, return filepath of saved best model. """
+
+    model = Sequential()
+    model.add(Embedding(vocab_size, 100, input_length = max_post_length * max_num_posts))
+    model.add(Flatten())
+    model.add(Dense(512, activation='relu'))
+    #model.add(Dense(128, activation='relu'))
+    model.add(Dense(64, activation='relu'))
+    #model.add(Flatten())
+    model.add(Dense(n_cats, activation='sigmoid'))
+
+    sgd = optimizers.SGD(lr=0.01) # 0.2 learning something
+    model.compile(loss='binary_crossentropy',
+                      optimizer=sgd, # was better with rmsprop
+                      metrics=['acc'])
+    model.summary()
+
+    if not os.path.exists(model_dirpath):
+        os.mkdir(model_dirpath)
+    out_modelpath = os.path.join(model_dirpath, 'feedforward_tags.h5')
+    model.fit(X_train, y_train, validation_data=(X_dev, y_dev), epochs=100, batch_size=10, callbacks=[ModelCheckpoint(out_modelpath, monitor='val_acc', verbose=1, save_best_only=True)])
+
+    return out_modelpath
+
+def model_predict(model_path, X):
 
     # Load best model
-    model = load_model(out_modelpath)
+    model = load_model(model_path)
 
-    return model.predict(X_test)
+    preds = model.predict(X)
+
+    preds[preds>=0.5] = True
+    preds[preds<0.5] = False
+
+    return model.predict(X)
+
 
 def main():
 
@@ -243,6 +290,7 @@ def main():
     base_dirpath = args.base_dirpath
     data_dirpath = os.path.join(base_dirpath, 'data')
     output_dirpath = os.path.join(base_dirpath, 'output', args.model_name)
+    model_dirpath = os.path.join(base_dirpath, 'models', args.model_name)
 
     descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
     posts_path = os.path.join(data_dirpath, 'textposts_100posts.pkl')
@@ -276,17 +324,22 @@ def main():
         dh.process_data(outcome_colname=outcome_colname)
 
     # Vectorize
-    X_train, X_dev, X_test = vectorize(dh)
+    if args.neural:
+        X_train, X_dev, X_test = vectorize_tags(dh)
+    else:
+        n_feats = 10000
+        X_train, X_dev, X_test = vectorize_text(dh, n_feats=n_feats)
     y_train, y_dev, y_test = dh.y['train'], dh.y['dev'], dh.y['test']
-    clfs = {'logistic_regression': LogisticRegression(),
-            'svm': LinearSVC()}
 
     if args.neural:
         # Run neural baselines
         clf_name = 'feedfoward neural network'
         print(f"Training {clf_name}...", end=" ")
         sys.stdout.flush()
-        preds = feedforward(X_train, y_train, X_dev, y_dev, X_test, len(dh.vocab), dh.max_post_length, len(outcome_colname), output_dirpath)
+        model_path = os.path.join(model_dirpath, 'feedforward_tags.h5')
+        #model_path = feedforward(X_train, y_train, X_dev, y_dev, X_test, len(dh.vocab), dh.max_post_length, dh.max_num_posts, len(dh.cats), model_dirpath)
+        preds = model_predict(model_path, X_test)
+
         print("done.")
         sys.stdout.flush()
         print(f"Evaluating {clf_name}...", end=" ")
@@ -295,7 +348,21 @@ def main():
         print("done.")
         sys.stdout.flush()
 
+        #clf_name = 'convolutional neural network'
+        #print(f"Training {clf_name}...", end=" ")
+        #sys.stdout.flush()
+        #preds = cnn(X_train, y_train, X_dev, y_dev, X_test, len(dh.vocab), dh.max_post_length, dh.max_num_posts, len(dh.cats), model_dirpath)
+        #print("done.")
+        #sys.stdout.flush()
+        #print(f"Evaluating {clf_name}...", end=" ")
+        #sys.stdout.flush()
+        #results = evaluate(preds, y_test, dh.cats, output_dirpath, clf_name)
+        #print("done.")
+        #sys.stdout.flush()
+
     else:
+        clfs = {'logistic_regression': LogisticRegression(),
+                'svm': LinearSVC()}
         # Run non-neural baselines
         for clf_name, clf in clfs.items():
             print(f"Training classifier {clf_name}...", end=" ")
