@@ -44,13 +44,13 @@ def preprocess_tags(tags_str):
 def main():
     # I/O
     data_dirpath = '/usr2/mamille2/tumblr/data'
-    posts_fpath = os.path.join(data_dirpath, 'textposts_100posts.pkl') # selected to have 100 posts
-    #posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # recent 100 posts, even if don't have 100
-    vocab_fpath = os.path.join(data_dirpath, 'textposts_100posts_vocab.pkl')
+    #posts_fpath = os.path.join(data_dirpath, 'textposts_100posts.pkl') # selected to have 100 posts
+    posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # recent 100 posts, even if don't have 100
+    vocab_fpath = os.path.join(data_dirpath, 'textposts_recent100_tag_vocab.pkl')
 
     # Settings
     debug = False
-    min_tag_freq = 3
+    min_tag_freq = 1
 
     # Load posts
     print("Loading data...", end=' ')
@@ -65,7 +65,7 @@ def main():
     # Preprocess tags
     print("Preprocessing tags...", end=' ')
     sys.stdout.flush()
-    data[f'parsed_tags_minfreq{min_tag_freq}'] = list(map(preprocess_tags, tqdm(data['post_tags'].tolist())))
+    data[f'parsed_tags_minfreq{min_tag_freq}'] = list(map(preprocess_tags, tqdm(data['post_tags'].tolist(), ncols=100)))
     print('done.')
     sys.stdout.flush()
 
@@ -83,7 +83,7 @@ def main():
         pdb.set_trace()
 
     else:
-        print(f"Saving tokenized file to {posts_fpath}...", end=' ')
+        print(f"Saving preprocessed file to {posts_fpath}...", end=' ')
         sys.stdout.flush()
         data.to_pickle(posts_fpath)
         print("done")

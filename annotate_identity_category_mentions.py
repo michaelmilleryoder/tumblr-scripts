@@ -79,7 +79,9 @@ class IdentityAnnotator():
                             r'\bprincess\b', r'queen', r'\blady\b', r'daughter', r'mommy', # added by bootstrapping
                             ],
                 'sexual orientation': 
-                             [r'gay', r'straight', r'lesbian', r'\bhomo',
+                             [r'gay', 
+                                r'straight', r'\bcishet',
+                                r'lesbian', r'\bhomo',
                                r'bisexual', r'\bbi\b', r'pansexual', r'\bpan\b', r'\bwlw\b', r'\bmlm\b',
                                r'lgbt', r'queer',
                                r'\bace\b', r'\basexual', r'aro-ace', r'aro/ace',
@@ -176,6 +178,27 @@ class IdentityAnnotator():
         with open(self.terms_path, 'wb') as f:
             pickle.dump(terms, f)
 
+        cishet_excl_terms = [
+            r"isn't a cishet",
+            r'if ur a cishet',
+            r"don't call me: cishet",
+            r"cishet aces",
+            r"anti-cishet",
+            r"cishets begone",
+            r"cishet scum",
+            r"hate cishets",
+            r"cishet sims",
+            r"isntcishet",
+            r"cishets",
+            r"you are white or cishet",
+            r"cishet men",
+            r"cishet males",
+            r"cishet guys",
+            r"terf/twerf/cishet/man",
+            r"if cishet",
+            r"not cishet",
+        ]
+
         excl_terms = {
             'age': ['nsfw 18', '18 nsfw', '18 only', 'only 18', '18\+', '18 \+', '18 or older', 'at least 18', 'under 18', '18×', '18 plus',
                 '24 hours',
@@ -194,7 +217,7 @@ class IdentityAnnotator():
                 r'of age',
                 r'golden age',
                 ],
-            'gender': [
+            'gender': cishet_excl_terms + [
                 'transylvania',
                 'protect trans',
                 'transfiguration',
@@ -214,7 +237,7 @@ class IdentityAnnotator():
                 r"gray-man",
                 r'husbands',
                 ],
-            'sexual orientation': [
+            'sexual orientation': cishet_excl_terms + [
                 'ace maverick',
                 r'straight into',
                 r'straight from',
@@ -408,6 +431,14 @@ class IdentityAnnotator():
 
         print(scores)
 
+def multiprocess_annotate(ia, descs, desc_colname, eval_mode):
+    descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
+    return descs_annotated
+
+def multiprocess_has_category(ia, cat, desc):
+    return ia._has_category(cat, desc)
+
+
 def main():
 
     # I/O files
@@ -450,12 +481,5 @@ def main():
 
     if eval_mode:
         ia.evaluate(descs)
-
-def multiprocess_annotate(ia, descs, desc_colname, eval_mode):
-    descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
-    return descs_annotated
-
-def multiprocess_has_category(ia, cat, desc):
-    return ia._has_category(cat, desc)
 
 if __name__=='__main__': main()

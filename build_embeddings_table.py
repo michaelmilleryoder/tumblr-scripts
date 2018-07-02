@@ -8,14 +8,16 @@ from keras.preprocessing.text import Tokenizer
 
 # I/O
 data_dirpath = '/usr2/mamille2/tumblr/data'
-embs_fpath = '/usr2/mamille2/fastText/tumblr_recent100_300.bin' #
+embs_fpath = '/usr2/mamille2/fastText/textposts_recent100_tags.bin' #
 #embs_fpath = '/usr2/kmaki/tumblr/top100posts-131M_fasttext-embeddings_3-6.bin.bin' # ~100GB RAM
 #embs_fpath = '/usr2/kmaki/tumblr/top100posts-131M_fasttext-embeddings_3-6.bin.vec' # ~40GB RAM
 posts_fpath = os.path.join(data_dirpath, 'textposts_100posts.pkl')
-out_fpath = os.path.join(data_dirpath, 'blog_descriptions_100posts_300dim.npy') # for lookup table of embeddings
+out_fpath = os.path.join(data_dirpath, 'textposts_100posts_tags.npy') # for lookup table of embeddings
 
 # Settings
 MAX_VOCAB_SIZE = 100000
+#input_colname = 'body_toks_str_no_titles'
+input_colname = 'parsed_tags_minfreq3_str'
 
 # Load text posts
 print('Loading posts...')
@@ -42,13 +44,14 @@ vocab_embed = np.empty((len(vocab), embed_dims))
 
 # Calculate OOV vector
 #unk_vec = np.mean([wembed[wd] for wd in wembed])
+rand_vec = np.random.random(embed_dims)
 
 for i, wd in enumerate(vocab):
-    vocab_embed[i,:] = wembed[wd]
-    #if i in wembed:
-    #    vocab_embed[i,:] = wembed[wd]
-    #else:
-    #    vocab_embed[i,:] = unk_vec
+    if wd in wembed:
+        vocab_embed[i,:] = wembed[wd]
+
+    else:
+        vocab_embed[i,:] = rand_vec
 
 np.save(out_fpath, vocab_embed)
 print(f'Saved lookup table of embeddings to {out_fpath}.')
