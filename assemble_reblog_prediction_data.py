@@ -42,8 +42,6 @@ def main():
     # ## Load followers
     print("Loading followers...")
     follower_data = pd.read_pickle(os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl'))
-    print(len(follower_data))
-    print(follower_data.columns)
 
     # Load followers who have follow info
     follower_ids = load_follower_ids(os.path.join(data_dirpath,'halfday_followers_with_descriptions.txt'))
@@ -69,23 +67,8 @@ def main():
     # Save follow data from followers for which have descriptions
     out_fpath = os.path.join(data_dirpath, 'follow_data_recent100.pkl')
 
-    follower_follow_data.to_pickle()
+    follower_follow_data.to_pickle(out_fpath)
     print(f"Saved follower follow data to {out_fpath}")
-
-    ## For how many followees do we have blog descriptions for?
-    #followees = set(follower_follow_data['followed_tumblog_id'])
-    #print(len(followees))
-
-    #followees_with_descriptions = followees.intersection()
-
-
-    ## ## Load posts
-
-    ## In[ ]:
-
-
-    #post_fname = 'textposts_recent100.pkl'
-    #post_data = pd.read_pickle(os.path.join(data_dirpath, post_fname))
 
 if __name__ == '__main__':
     main()
