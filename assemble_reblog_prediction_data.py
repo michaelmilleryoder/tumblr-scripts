@@ -2,56 +2,34 @@ import pandas as pd
 import os
 from tqdm import tqdm as tqdm
 import numpy as np
+import pickle
+import pdb
+
+#def get_followees(follow_fpath):
+#
+#    chunksize = int(1e5)
+#    total_iters = int(np.ceil(3220088178 / chunksize))
+#    hdr = ['tumblog_id', 'followed_tumblog_id', 'activity_time_epoch']
+#    chunked = pd.read_csv(follow_fpath, sep='\t', header=None, names=hdr, chunksize=chunksize)
+#
+#    stx_follower_ids = set()
+#    # follower_ids = follower_data['tumblog_id'].tolist()
+#    # followee_data = []
+#
+#    for chunk in tqdm(chunked, total=total_iters):
+#        stx_follower_ids |= set(chunk['tumblog_id'].unique())
+#    #     followee_data.append(chunk[chunk['tumblog_id'].isin(follower_ids)].values)
+#        
+#    print(len(stx_follower_ids))
+#
+#    follower_ids = stx_follower_ids.intersection(set(follower_data['tumblog_id']))
+#
+#    return follower_ids # Have at least one piece of follow information for these users
 
 
-# # See if can use data that already have for reblog prediction
-def get_followees():
+def get_followee_data(follow_fpath):
+    # Unnecessary?
 
-    follow_fpath = '/usr2/kmaki/tumblr/follow_network.tsv' # 99G
-    chunksize = int(1e5)
-    total_iters = int(np.ceil(3220088178 / chunksize))
-    hdr = ['tumblog_id', 'followed_tumblog_id', 'activity_time_epoch']
-    chunked = pd.read_csv(follow_fpath, sep='\t', header=None, names=hdr, chunksize=chunksize)
-
-    stx_follower_ids = set()
-    # follower_ids = follower_data['tumblog_id'].tolist()
-    # followee_data = []
-
-    for chunk in tqdm(chunked, total=total_iters):
-        stx_follower_ids |= set(chunk['tumblog_id'].unique())
-    #     followee_data.append(chunk[chunk['tumblog_id'].isin(follower_ids)].values)
-        
-    print(len(stx_follower_ids))
-
-    follower_ids = stx_follower_ids.intersection(set(follower_data['tumblog_id']))
-    return follower_ids # Have at least one piece of follow information for these users
-
-
-def load_follower_ids(fpath):
-
-    with open(fpath, 'r') as f:
-        follower_ids = set([int(l) for l in f.read().splitlines()])
-
-    return follower_ids
-
-
-def main():
-
-    data_dirpath = '/usr2/mamille2/tumblr/data'
-
-    # ## Load followers
-    print("Loading followers...")
-    follower_data = pd.read_pickle(os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl'))
-
-    # Load followers who have follow info
-    follower_ids = load_follower_ids(os.path.join(data_dirpath,'halfday_followers_with_descriptions.txt'))
-
-    # ## Load followees
-    # See what follow structure can find for set of followers
-
-    # Get followee data
-    print("Getting followee data...")
-    follow_fpath = '/usr2/kmaki/tumblr/follow_network.tsv' # 99G
     chunksize = int(1e5)
     total_iters = int(np.ceil(3220088178 / chunksize))
     hdr = ['tumblog_id', 'followed_tumblog_id', 'activity_time_epoch']
@@ -64,11 +42,85 @@ def main():
         
     follower_follow_data = pd.DataFrame(np.vstack(followee_data), columns=hdr)
 
-    # Save follow data from followers for which have descriptions
-    out_fpath = os.path.join(data_dirpath, 'follow_data_recent100.pkl')
+    follower_data = pd.read_pickle(os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl'))
 
-    follower_follow_data.to_pickle(out_fpath)
-    print(f"Saved follower follow data to {out_fpath}")
+    return follower_follow_data
+
+
+def load_follower_ids(fpath):
+
+    with open(fpath, 'r') as f:
+        follower_ids = set([int(l) for l in f.read().splitlines()])
+
+    return follower_ids
+
+
+def get_rebloggers(post_data, descs_data, follower_ids, follow_data):
+
+    # Restrict followees to those who have blog descriptions
+    #followee_ids = set(follow_data.loc[follow_data['followed_tumblog_id'].isin(descs_data['tumblog_id']), 'followed_tumblog_id'].unique())
+    followee_ids = set(follow_data['followed_tumblog_id']).intersection(set(descs_data['tumblog_id']))
+
+    # Get posts by followees
+    followee_posts = post_data[post_data['tumblog_id'].isin(followee_ids)]
+    print(len(followee_posts))
+
+    # Find list of users who have reblogged from set of followees at least once (could see if after followed, but not important if reblogged from a user anyway)
+    reblogs = followee_posts[followee_posts['reblogged_from_post_id'] >= 0]
+    reblog_followers = set(reblogs['tumblog_id'].unique())
+    print(len(reblog_followers))
+
+    return reblog_followers
+
+def main():
+
+    ###### In I/O #######
+    #data_dirpath = '/usr2/mamille2/tumblr/data' # erebor
+    data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data' # misty
+    follow_fpath = '/usr2/kmaki/tumblr/follow_network.tsv' # 99G, only erebor
+    followers_fpath = os.path.join(data_dirpath,'halfday_followers_with_descriptions.txt')
+    posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # ~75 GB in memory
+    descs_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
+
+    ###### Out I/O ######
+    follow_out_fpath = os.path.join(data_dirpath, 'follow_data_recent100.pkl')
+
+    # ## Load followers
+    print("Loading followers...")
+    follower_data = pd.read_pickle(descs_fpath)
+
+    # Load followers who have follow info, descriptions
+    follower_ids = load_follower_ids(followers_fpath)
+
+    #followee_ids = get_followees()
+
+    # Get followee data
+    #print("Getting followee data...")
+    #follower_follow_data = get_followee_data(follow_fpath)
+    #follower_follow_data.to_pickle(follow_out_fpath)
+    #print(f"Saved follower follow data to {follow_out_fpath}")
+
+    print("Loading followee data...")
+    follower_follow_data = pd.read_pickle(follow_out_fpath)
+
+    # Restrict followers to those who have ever reblogged
+    print("Loading posts...")
+    post_data = pd.read_pickle(posts_fpath) # 75 GB
+    #print("Filtering followers to rebloggers...")
+    #rebloggers = get_rebloggers(post_data, follower_data, follower_ids, follower_follow_data)
+    print("Loading rebloggers...")
+    with open(os.path.join(data_dirpath, 'rb') as f:
+        rebloggers = pickle.load(f)
+
+    # Find posts from followees that followers might have seen (posted after follow)
+
+    # Make a dictionary of followees -> followers
+
+    # Restrict follow data to rebloggers
+    reblog_follow_data = follow_data[follow_data['tumblog_id'].isin(reblog_users)]
+    pdb.set_trace()
+    gped = reblog_follow_data.set_index(('tumblog_id', ').groupby('followed_tumblog_id')
+    follow_dict = {key: list(gped.groups[key]) for key in gped.groups}
 
 if __name__ == '__main__':
     main()
