@@ -3,6 +3,7 @@ import os
 from tqdm import tqdm as tqdm
 import numpy as np
 import pickle
+import gc
 import pdb
 
 #def get_followees(follow_fpath):
@@ -72,6 +73,68 @@ def get_rebloggers(post_data, descs_data, follower_ids, follow_data):
 
     return reblog_followers
 
+
+def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath):
+
+    # Make a dictionary of followees -> followers
+    gped = reblog_follow_data.set_index('tumblog_id').groupby('followed_tumblog_id')
+
+    #print("\tMaking follow dictionary...")
+    #follow_dict = {key: list(gped.groups[key]) for key in tqdm(gped.groups)}
+    # Save
+    #with open(os.path.join(data_dirpath, 'temp_follow_dict.pkl'), 'wb') as f:
+    #    pickle.dump(follow_dict, f)
+    # Load
+    #print("\tLoading follow dictionary...")
+    #with open(os.path.join(data_dirpath, 'temp_follow_dict.pkl'), 'rb') as f:
+    #    follow_dict = pickle.load(f)
+
+    # Lookup table for times 
+    #print("\tMaking time lookup dictionary...")
+    #time_dict = {(follower, followee): time for follower, followee, time in tqdm(list(zip(
+    #                reblog_follow_data['tumblog_id'], 
+    #                reblog_follow_data['followed_tumblog_id'],
+    #                reblog_follow_data['activity_time_epoch']
+    #            )))}
+    # Save
+    #with open(os.path.join(data_dirpath, 'temp_time_dict.pkl'), 'wb') as f:
+    #    pickle.dump(time_dict, f)
+    # Load
+    #print("\tLoading time lookup dictionary...")
+    #with open(os.path.join(data_dirpath, 'temp_time_dict.pkl'), 'rb') as f:
+    #    time_dict = pickle.load(f)
+
+    # Merge posts with followers/followee, make opportunities
+    #print("\tMerging follower information with posts...")
+    #followee_posts['followers'] = [get_followers(post_ts, followee, follow_dict, time_dict) for followee, post_ts in tqdm(list(zip(followee_posts['tumblog_id'], followee_posts['activity_time_epoch'])))]
+    # Save
+ #   followee_posts['followers'].to_pickle(os.path.join(data_dirpath, 'temp_follow_info.pkl'))
+    # Load
+    print("\tLoading follower info for posts...")
+    followee_posts['followers'] = pd.read_pickle(os.path.join(data_dirpath, 'temp_follow_info.pkl'))
+ 
+    # Posts -> opportunities, each row a specific follower/followee/post triple
+    pdb.set_trace()
+    s = followee_posts.apply(lambda x: pd.Series(x['followers']), axis=1).stack().reset_index(level=1, drop=True)
+    s.name = 'follower'
+    data = followee_posts.join(s)
+    data.reset_index(drop=True, inplace=True)
+    data.drop('followers', axis=1, inplace=True)
+    print(f"\tLength of opportunities table: {len(data)}")
+
+    # Save opportunities
+    print(f'\tSaving opportunities data to {opportunities_outpath}')
+    data.to_pickle(opportunities_outpath, index=False)
+
+    return data
+
+
+def get_followers(post_ts, followee, follow_dict, time_dict):
+    # Return followers who followed after a post was posted
+    
+    return [follower for follower in follow_dict[followee] if int(post_ts) >= int(time_dict[(follower, followee)])]
+
+
 def main():
 
     ###### In I/O #######
@@ -84,6 +147,7 @@ def main():
 
     ###### Out I/O ######
     follow_out_fpath = os.path.join(data_dirpath, 'follow_data_recent100.pkl')
+    opportunities_outpath = os.path.join(data_dirpath, 'posts_descs_rebloggers.pkl')
 
     # ## Load followers
     print("Loading followers...")
@@ -101,26 +165,34 @@ def main():
     #print(f"Saved follower follow data to {follow_out_fpath}")
 
     print("Loading followee data...")
-    follower_follow_data = pd.read_pickle(follow_out_fpath)
+    follow_data = pd.read_pickle(follow_out_fpath)
 
     # Restrict followers to those who have ever reblogged
     print("Loading posts...")
     post_data = pd.read_pickle(posts_fpath) # 75 GB
     #print("Filtering followers to rebloggers...")
-    #rebloggers = get_rebloggers(post_data, follower_data, follower_ids, follower_follow_data)
+    #rebloggers = get_rebloggers(post_data, follower_data, follower_ids, follow_data)
     print("Loading rebloggers...")
-    with open(os.path.join(data_dirpath, 'rb') as f:
+    with open(os.path.join(data_dirpath, 'rebloggers.pkl'), 'rb') as f:
         rebloggers = pickle.load(f)
 
-    # Find posts from followees that followers might have seen (posted after follow)
-
-    # Make a dictionary of followees -> followers
+    # Filter to posts posted from followees
+    print("Filtering posts to just those from followees...")
+    followees = set(follow_data.loc[follow_data['tumblog_id'].isin(rebloggers), 'followed_tumblog_id'])
+    followee_posts = post_data[post_data['tumblog_id'].isin(followees)]
+    del post_data
+    gc.collect()
 
     # Restrict follow data to rebloggers
-    reblog_follow_data = follow_data[follow_data['tumblog_id'].isin(reblog_users)]
+    reblog_follow_data = follow_data[follow_data['tumblog_id'].isin(follower_ids)]
+    del follow_data
+    gc.collect()
+
+    # Find posts from followees that followers might have seen (posted after follow)
+    print("Making table with reblog opportunities...")
+    reblog_opportunities = make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath)
     pdb.set_trace()
-    gped = reblog_follow_data.set_index(('tumblog_id', ').groupby('followed_tumblog_id')
-    follow_dict = {key: list(gped.groups[key]) for key in gped.groups}
+
 
 if __name__ == '__main__':
     main()
