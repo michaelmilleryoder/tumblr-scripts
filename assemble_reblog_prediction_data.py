@@ -74,7 +74,7 @@ def get_rebloggers(post_data, descs_data, follower_ids, follow_data):
     return reblog_followers
 
 
-def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath):
+def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath, chunksize):
 
     # Make a dictionary of followees -> followers
     gped = reblog_follow_data.set_index('tumblog_id').groupby('followed_tumblog_id')
@@ -89,7 +89,7 @@ def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, 
     #with open(os.path.join(data_dirpath, 'temp_follow_dict.pkl'), 'rb') as f:
     #    follow_dict = pickle.load(f)
 
-    # Lookup table for times 
+    # Lookup table for follow times 
     #print("\tMaking time lookup dictionary...")
     #time_dict = {(follower, followee): time for follower, followee, time in tqdm(list(zip(
     #                reblog_follow_data['tumblog_id'], 
@@ -114,19 +114,23 @@ def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, 
     followee_posts['followers'] = pd.read_pickle(os.path.join(data_dirpath, 'temp_follow_info.pkl'))
  
     # Posts -> opportunities, each row a specific follower/followee/post triple
+
+    # Split up
+    n_splits = len(followee_posts)//chunksize + 1
+    splits = np.array_split(followee_posts, n_splits)
     pdb.set_trace()
-    s = followee_posts.apply(lambda x: pd.Series(x['followers']), axis=1).stack().reset_index(level=1, drop=True)
-    s.name = 'follower'
-    data = followee_posts.join(s)
-    data.reset_index(drop=True, inplace=True)
-    data.drop('followers', axis=1, inplace=True)
-    print(f"\tLength of opportunities table: {len(data)}")
 
-    # Save opportunities
-    print(f'\tSaving opportunities data to {opportunities_outpath}')
-    data.to_pickle(opportunities_outpath, index=False)
+    for i, split in tqdm(enumerate(splits), total=n_splits):
+        s = split.apply(lambda x: pd.Series(x['followers']), axis=1).stack().reset_index(level=1, drop=True)
+        s.name = 'follower'
+        data = split.join(s)
+        data.reset_index(drop=True, inplace=True)
+        data.drop('followers', axis=1, inplace=True)
+        #print(f"\tLength of opportunities table: {len(data)}")
 
-    return data
+        # Save opportunities
+        print(f'\tSaving opportunities data to {opportunities_outpath}')
+        data.to_csv(opportunities_outpath.format(i), index=False)
 
 
 def get_followers(post_ts, followee, follow_dict, time_dict):
@@ -142,12 +146,13 @@ def main():
     data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data' # misty
     follow_fpath = '/usr2/kmaki/tumblr/follow_network.tsv' # 99G, only erebor
     followers_fpath = os.path.join(data_dirpath,'halfday_followers_with_descriptions.txt')
-    posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # ~75 GB in memory
+    #posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # ~75 GB in memory
+    posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.csv') # ~75 GB in memory
     descs_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
 
     ###### Out I/O ######
     follow_out_fpath = os.path.join(data_dirpath, 'follow_data_recent100.pkl')
-    opportunities_outpath = os.path.join(data_dirpath, 'posts_descs_rebloggers.pkl')
+    opportunities_outpath = os.path.join(data_dirpath, 'posts_descs_rebloggers_{:03d}.csv')
 
     # ## Load followers
     print("Loading followers...")
@@ -168,10 +173,6 @@ def main():
     follow_data = pd.read_pickle(follow_out_fpath)
 
     # Restrict followers to those who have ever reblogged
-    print("Loading posts...")
-    post_data = pd.read_pickle(posts_fpath) # 75 GB
-    #print("Filtering followers to rebloggers...")
-    #rebloggers = get_rebloggers(post_data, follower_data, follower_ids, follow_data)
     print("Loading rebloggers...")
     with open(os.path.join(data_dirpath, 'rebloggers.pkl'), 'rb') as f:
         rebloggers = pickle.load(f)
@@ -179,9 +180,35 @@ def main():
     # Filter to posts posted from followees
     print("Filtering posts to just those from followees...")
     followees = set(follow_data.loc[follow_data['tumblog_id'].isin(rebloggers), 'followed_tumblog_id'])
-    followee_posts = post_data[post_data['tumblog_id'].isin(followees)]
-    del post_data
-    gc.collect()
+
+    print("Loading posts...")
+    #post_data = pd.read_pickle(posts_fpath) # 75 GB
+    #print("Filtering followers to rebloggers...")
+    #rebloggers = get_rebloggers(post_data, follower_data, follower_ids, follow_data)
+
+    read_chunksize = 1e6
+    total_lines = 28e6 # from wc -l
+    followee_posts_lines = []
+    ctr = 0
+    for chunk in pd.read_csv(posts_fpath, chunksize=read_chunksize, error_bad_lines=False):
+        print(f"{ctr} / {int(total_lines/read_chunksize)}")
+        hdr = chunk.columns
+        if ctr < 27: # may be problem with num columns in CSV
+            followee_posts_lines.append(chunk[chunk['tumblog_id'].isin(followees)])
+        else:
+            break
+        ctr += 1
+
+    stack = np.vstack([d.values for d in followee_posts_lines])
+    followee_posts = pd.DataFrame(stack, columns=hdr)
+    # Save
+    followee_posts.to_pickle(os.path.join(data_dirpath, 'temp_followee_posts.pkl'))
+    # Load
+    #followee_posts = pd.read_pickle(os.path.join(data_dirpath, 'temp_followee_posts.pkl'))
+
+    #followee_posts = post_data[post_data['tumblog_id'].isin(followees)]
+    #del post_data
+    #gc.collect()
 
     # Restrict follow data to rebloggers
     reblog_follow_data = follow_data[follow_data['tumblog_id'].isin(follower_ids)]
@@ -190,8 +217,8 @@ def main():
 
     # Find posts from followees that followers might have seen (posted after follow)
     print("Making table with reblog opportunities...")
-    reblog_opportunities = make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath)
-    pdb.set_trace()
+    write_chunksize = 1e5
+    make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath, write_chunksize)
 
 
 if __name__ == '__main__':
