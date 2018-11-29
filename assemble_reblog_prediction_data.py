@@ -66,7 +66,7 @@ def get_rebloggers(post_data, descs_data, follower_ids, follow_data):
     followee_posts = post_data[post_data['tumblog_id'].isin(followee_ids)]
     print(len(followee_posts))
 
-    # Find list of users who have reblogged from set of followees at least once (could see if after followed, but not important if reblogged from a user anyway)
+    # Find list of users who have reblogged from set of followees at least once
     reblogs = followee_posts[followee_posts['reblogged_from_post_id'] >= 0]
     reblog_followers = set(reblogs['tumblog_id'].unique())
     print(len(reblog_followers))
@@ -160,7 +160,6 @@ def main():
 
     # Load followers who have follow info, descriptions
     follower_ids = load_follower_ids(followers_fpath)
-
     #followee_ids = get_followees()
 
     # Get followee data
@@ -186,29 +185,25 @@ def main():
     #print("Filtering followers to rebloggers...")
     #rebloggers = get_rebloggers(post_data, follower_data, follower_ids, follow_data)
 
-    read_chunksize = 1e6
-    total_lines = 28e6 # from wc -l
-    followee_posts_lines = []
-    ctr = 0
-    for chunk in pd.read_csv(posts_fpath, chunksize=read_chunksize, error_bad_lines=False):
-        print(f"{ctr} / {int(total_lines/read_chunksize)}")
-        hdr = chunk.columns
-        if ctr < 27: # may be problem with num columns in CSV
-            followee_posts_lines.append(chunk[chunk['tumblog_id'].isin(followees)])
-        else:
-            break
-        ctr += 1
+    #read_chunksize = 1e6
+    #total_lines = 28e6 # from wc -l
+    #followee_posts_lines = []
+    #ctr = 0
+    #for chunk in pd.read_csv(posts_fpath, chunksize=read_chunksize, error_bad_lines=False):
+    #    print(f"{ctr} / {int(total_lines/read_chunksize)}")
+    #    hdr = chunk.columns
+    #    if ctr < 27: # may be problem with num columns in CSV
+    #        followee_posts_lines.append(chunk[chunk['tumblog_id'].isin(followees)])
+    #    else:
+    #        break
+    #    ctr += 1
 
-    stack = np.vstack([d.values for d in followee_posts_lines])
-    followee_posts = pd.DataFrame(stack, columns=hdr)
-    # Save
-    followee_posts.to_pickle(os.path.join(data_dirpath, 'temp_followee_posts.pkl'))
+    #stack = np.vstack([d.values for d in followee_posts_lines])
+    #followee_posts = pd.DataFrame(stack, columns=hdr)
+    ## Save
+    #followee_posts.to_pickle(os.path.join(data_dirpath, 'temp_followee_posts.pkl'))
     # Load
-    #followee_posts = pd.read_pickle(os.path.join(data_dirpath, 'temp_followee_posts.pkl'))
-
-    #followee_posts = post_data[post_data['tumblog_id'].isin(followees)]
-    #del post_data
-    #gc.collect()
+    followee_posts = pd.read_pickle(os.path.join(data_dirpath, 'temp_followee_posts.pkl'))
 
     # Restrict follow data to rebloggers
     reblog_follow_data = follow_data[follow_data['tumblog_id'].isin(follower_ids)]
@@ -219,6 +214,12 @@ def main():
     print("Making table with reblog opportunities...")
     write_chunksize = 1e5
     make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath, write_chunksize)
+
+    # Annotate reblog opportunities as reblogged or not
+
+    # Split reblogged opportunities from not (should do earlier by figuring out first which followee posts have been rebloggedby followers)
+
+    # Sample negative example, pair with reblogs
 
 
 if __name__ == '__main__':
