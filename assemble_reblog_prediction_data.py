@@ -38,7 +38,7 @@ def get_followee_data(follow_fpath):
 
     followee_data = [] # list of np arrays to be concatenated
 
-    for chunk in tqdm(chunked, total=total_iters):
+    for chunk in tqdm(chunked, total=total_iters, ncols=20):
         followee_data.append(chunk[chunk['tumblog_id'].isin(follower_ids)].values)
         
     follower_follow_data = pd.DataFrame(np.vstack(followee_data), columns=hdr)
@@ -118,7 +118,6 @@ def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, 
     # Split up
     n_splits = len(followee_posts)//chunksize + 1
     splits = np.array_split(followee_posts, n_splits)
-    pdb.set_trace()
 
     for i, split in tqdm(enumerate(splits), total=n_splits):
         s = split.apply(lambda x: pd.Series(x['followers']), axis=1).stack().reset_index(level=1, drop=True)
@@ -129,7 +128,7 @@ def make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, 
         #print(f"\tLength of opportunities table: {len(data)}")
 
         # Save opportunities
-        print(f'\tSaving opportunities data to {opportunities_outpath}')
+        tqdm.write(f'\tSaving opportunities data to {opportunities_outpath.format(i)}')
         data.to_csv(opportunities_outpath.format(i), index=False)
 
 
@@ -152,7 +151,7 @@ def main():
 
     ###### Out I/O ######
     follow_out_fpath = os.path.join(data_dirpath, 'follow_data_recent100.pkl')
-    opportunities_outpath = os.path.join(data_dirpath, 'posts_descs_rebloggers_{:03d}.csv')
+    opportunities_outpath = os.path.join(data_dirpath, 'posts_descs', 'posts_descs_{:04d}.csv')
 
     # ## Load followers
     print("Loading followers...")
@@ -212,7 +211,7 @@ def main():
 
     # Find posts from followees that followers might have seen (posted after follow)
     print("Making table with reblog opportunities...")
-    write_chunksize = 1e5
+    write_chunksize = 1e4
     make_reblog_opportunities(reblog_follow_data, follower_ids, followee_posts, opportunities_outpath, data_dirpath, write_chunksize)
 
     # Annotate reblog opportunities as reblogged or not
