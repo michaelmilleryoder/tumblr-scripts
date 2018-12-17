@@ -6,6 +6,7 @@ import pickle
 import os, sys
 from html.parser import HTMLParser
 from tqdm import tqdm
+from multiprocessing import Pool
 import pickle
 import warnings
 import pdb
@@ -13,22 +14,32 @@ import pdb
 def load_data(desc_fpath):
     tqdm.write("Loading data...", end=' ')
     sys.stdout.flush()
-    desc_data = pd.read_pickle(desc_fpath)
+    
+    if desc_fpath.endswith('.csv'):
+        desc_data = pd.read_csv(desc_fpath)
+    elif desc_fpath.endswith('.tsv'):
+        desc_data = pd.read_csv(desc_fpath, sep='\t')
+    elif desc_fpath.endswith('.pkl'):
+        desc_data = pd.read_pickle(desc_fpath)
+    else:
+        raise ValueError("Descriptions path not csv or pickle.")
     tqdm.write("done.")
 
     # Remove duplicates by tumblog id
-    desc_data.drop_duplicates(inplace=True, subset=['tumblog_id'])
-    tqdm.write(f'#descriptions: {len(desc_data)}')
-
-    if 'parsed_blog_description' in desc_data.columns:
-        tqdm.write("Descriptions already preprocessed, skipping to list description identification.")
-        sys.stdout.flush()
-        preprocessed = True
-
-    else:
-        preprocessed = False
+    #desc_data.drop_duplicates(inplace=True, subset=['tumblog_id'])
+    #tqdm.write(f'#descriptions: {len(desc_data)}')
     
-    return desc_data, preprocessed
+    return desc_data
+
+    #if 'parsed_blog_description' in desc_data.columns:
+    #    tqdm.write("Descriptions already preprocessed")
+    #    sys.stdout.flush()
+    #    preprocessed = True
+
+    #else:
+    #    preprocessed = False
+    #
+    #return desc_data, preprocessed
 
 class MLStripper(HTMLParser):
     def __init__(self):
@@ -41,7 +52,9 @@ class MLStripper(HTMLParser):
         return ' '.join(self.fed)
 
 def clean_html(html):
-    soup = BeautifulSoup(html, 'lxml')
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        soup = BeautifulSoup(html, 'lxml')
     for s in soup(['script', 'style']):
         s.decompose()
     return ' '.join(soup.stripped_strings)
@@ -77,37 +90,35 @@ def process_dates(desc):
 def process_date(datestr):
     return datestr.replace('/', '-').replace('.', '-')
 
-def preprocess(desc_data):
+def preprocess(desc_data, desc_colname):
     # Remove HTML tags
     tqdm.write("Removing HTML tags...", end=' ')
     sys.stdout.flush()
+    new_colname = f"processed_{desc_colname}"
 
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore')
-        desc_data['parsed_blog_description'] = list(map(strip_tags, tqdm(desc_data['tumblr_blog_description'].tolist())))
+    with Pool(15) as pool:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            #desc_data[new_colname] = list(map(strip_tags, tqdm(desc_data[desc_colname].tolist())))
+            desc_data[new_colname] = list(pool.map(strip_tags, desc_data[desc_colname].tolist()))
 
     # Remove empty parsed blogs
-    desc_data = desc_data[desc_data['parsed_blog_description'].map(lambda x: len(x) > 0)]
+    desc_data = desc_data[desc_data[new_colname].map(lambda x: len(x) > 0)]
     tqdm.write("done\n")
 
     # # Process URLs (to hyphens) so don't interact with list descriptions
-    tqdm.write("Processing URLs...", end=' ')
-    sys.stdout.flush()
+    #tqdm.write("Processing URLs...", end=' ')
+    #sys.stdout.flush()
 
-    desc_data['parsed_blog_description'] = list(map(process_urls, tqdm(desc_data['parsed_blog_description'].tolist())))
-    tqdm.write("done\n")
+    #desc_data['parsed_blog_description'] = list(map(process_urls, tqdm(desc_data['parsed_blog_description'].tolist())))
+    #tqdm.write("done\n")
 
-    # # Process dates so don't interact with list descriptions
-    tqdm.write("Processing dates...", end=' ')
-    sys.stdout.flush()
+    ## # Process dates so don't interact with list descriptions
+    #tqdm.write("Processing dates...", end=' ')
+    #sys.stdout.flush()
 
-    desc_data['parsed_blog_description'] = list(map(process_dates, tqdm(desc_data['parsed_blog_description'].tolist())))
-    tqdm.write("done\n")
-
-    tqdm.write(f"Saving parsed blog descriptions to {desc_fpath}...", end=' ')
-    sys.stdout.flush()
-    desc_data.to_pickle(desc_fpath)
-    tqdm.write('done\n')
+    #desc_data['parsed_blog_description'] = list(map(process_dates, tqdm(desc_data['parsed_blog_description'].tolist())))
+    #tqdm.write("done\n")
 
     return desc_data
 
@@ -217,6 +228,13 @@ def list_descriptions(desc_data, sep_chars_fpath, char_limit, list_desc_fpath):
 
     return restr_desc_data
 
+def save(desc_data, desc_fpath):
+    tqdm.write(f"Saving parsed blog descriptions to {desc_fpath}...", end=' ')
+    sys.stdout.flush()
+    #desc_data.to_pickle(desc_fpath)
+    desc_data.to_csv(desc_fpath, sep='\t', index=False)
+    tqdm.write('done\n')
+
 
 def main():
 
@@ -225,18 +243,36 @@ def main():
 
     # I/O
     #data_dirpath = '/usr0/home/mamille2/tumblr/data' 
-    data_dirpath = '/usr2/mamille2/tumblr/data' 
-    desc_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
-    list_desc_fpath = os.path.join(data_dirpath, f'bootstrapped_list_descriptions_recent100_restr{char_limit}.pkl')
-    sep_chars_fpath = os.path.join(data_dirpath, "common_sep_chars.pkl")
+    #data_dirpath = '/usr2/mamille2/tumblr/data' 
+    data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/' 
+    #desc_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
+    #desc_fpath = os.path.join(data_dirpath, 'reblogs_descs.tsv')
+    desc_fnames = sorted(os.listdir(os.path.join(data_dirpath, 'nonreblogs_descs_nodups')))[72:]
+    #list_desc_fpath = os.path.join(data_dirpath, f'bootstrapped_list_descriptions_recent100_restr{char_limit}.pkl')
+    #sep_chars_fpath = os.path.join(data_dirpath, "common_sep_chars.pkl")
 
-    # Load data
-    descs, preprocessed = load_data(desc_fpath)
+    desc_colnames = ['blog_description_follower', 'blog_description_followee']    
 
-    if not preprocessed:
-        descs = preprocess(descs)
+    for desc_fname in tqdm(desc_fnames, ncols=50):
+        desc_fpath = os.path.join(data_dirpath, 'nonreblogs_descs_nodups', desc_fname)
+        out_fpath = os.path.join(data_dirpath, 'nonreblogs_descs', desc_fname)
 
-    list_descs = list_descriptions(descs, sep_chars_fpath, char_limit, list_desc_fpath)
+        # Load data
+        #descs, preprocessed = load_data(desc_fpath)
+        descs = load_data(desc_fpath)
+        if len(descs) == 0:
+            continue
+
+        #if not preprocessed:
+        #    descs = preprocess(descs)
+
+        for desc_colname in desc_colnames:
+            descs = preprocess(descs, desc_colname)
+
+        # Save data
+        save(descs, out_fpath)
+
+        #list_descs = list_descriptions(descs, sep_chars_fpath, char_limit, list_desc_fpath)
 
     tqdm.write("FINISHED PREPROCESSING")
 

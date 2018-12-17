@@ -171,6 +171,9 @@ class IdentityAnnotator():
                     r'\b(?:c|g|s|h|l)w[1-3]?\b', r'\blbs?\b', r'\bkgs?\b', r'pounds', r'kilograms',
                     r'weight', r'\bfat\b', r'\bthin\b', r'\bana\b', r'anorexic', r'anorexia', r'bulimia', r'eating disorders?',
                 ],
+                'zodiac': [
+                    r'\baries\b', r'\btaurus\b', r'\bgemini\b', r'\bcancer\b', r'\bleo\b', r'\bvirgo\b', r'\blibra\b', r'\bscorpius\b',
+                ],
         }
         terms['gender/sexuality'] = terms['gender'] + terms['sexual orientation'] + terms['pronouns']
         terms['roleplay/fandoms'] = terms['roleplay'] + terms['fandoms']
@@ -393,22 +396,22 @@ class IdentityAnnotator():
 
         return matches, presence
 
-    def annotate(self, descs, desc_colname, eval_mode):
+    def annotate(self, descs, desc_colname, suffix, eval_mode):
         """ By default, does multiprocessing """
 
-        pool = Pool(5)
-
         # Annotate for identity categories
-        for i,cat in enumerate(sorted(self.terms)):
-            print(f'{cat} ({i+1}/{len(self.terms)})')
-            if eval_mode:
-                descs[f'{cat}_terms'], descs[f'{cat}_pred'] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
-            else:
-                #descs[f'{cat}_terms'], descs[cat] = list(zip(*list(pool.map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
-                descs[f'{cat}_terms'], descs[cat] = list(zip(*list(pool.starmap(multiprocess_has_category, 
-        zip(repeat(self), 
-            repeat(cat),
-            tqdm(descs[desc_colname].tolist()))))))
+        with Pool(15) as pool:
+            for i,cat in enumerate(sorted(self.terms)):
+                #print(f'{cat} ({i+1}/{len(self.terms)})')
+                if eval_mode:
+                    #descs[f'{cat}_terms'], descs[f'{cat}_pred'] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+                    descs[f'{cat}_terms'], descs[f'{cat}_pred'] = list(zip(*list(map(lambda desc: self._has_category(cat, desc), descs[desc_colname]))))
+                else:
+                    #descs[f'{cat}_terms'], descs[cat] = list(zip(*list(pool.map(lambda desc: self._has_category(cat, desc), tqdm(descs[desc_colname])))))
+                    descs[f'{cat}_terms_{suffix}'], descs[cat] = list(zip(*list(pool.starmap(multiprocess_has_category, 
+            zip(repeat(self), 
+                repeat(cat),
+                descs[desc_colname].tolist())))))
 
         return descs
 
@@ -431,8 +434,8 @@ class IdentityAnnotator():
 
         print(scores)
 
-def multiprocess_annotate(ia, descs, desc_colname, eval_mode):
-    descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
+def multiprocess_annotate(ia, descs, desc_colname, suffix, eval_mode):
+    descs_annotated = ia.annotate(descs, desc_colname, suffix, eval_mode)
     return descs_annotated
 
 def multiprocess_has_category(ia, cat, desc):
@@ -442,42 +445,54 @@ def multiprocess_has_category(ia, cat, desc):
 def main():
 
     # I/O files
-    data_dirpath = '/usr2/mamille2/tumblr/data'
-    descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
-    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
-    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
-    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
-    outpath = descs_path
+    #data_dirpath = '/usr2/mamille2/tumblr/data'
+    data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200'
+
+    #descs_path = os.path.join(data_dirpath, 'reblogs_descs.tsv')
+    descs_fnames = sorted(os.listdir(os.path.join(data_dirpath, 'nonreblogs_descs')))[42:]
+    #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
+
+    #outpath = descs_path[:-4] + '_annotated.tsv'
     #outpath = os.path.join(data_dirpath, 'blog_descriptions_recent100_100posts.pkl')
     #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_train.pkl')
     #outpath = os.path.join(data_dirpath, 'blog_descriptions_1000sample_test.pkl')
 
     # Settings
-    desc_colname = 'parsed_blog_description'
+    #desc_colname = 'parsed_blog_description'
+    desc_colnames = ['processed_blog_description_follower', 'processed_blog_description_followee']
     eval_mode = False # if evaluating against hand annotations
 
-    print("Loading blog descriptions...", end=' ')
-    sys.stdout.flush()
-    if descs_path.endswith('.csv'):
-        descs = pd.read_csv(descs_path)
-    elif descs_path.endswith('.pkl'):
-        descs = pd.read_pickle(descs_path)
-    else:
-        raise ValueError("Descriptions path not csv or pickle.")
-    print('done.')
-    sys.stdout.flush()
+    for descs_fname in tqdm(descs_fnames, ncols=50):
+        tqdm.write(descs_fname)
+        descs_fpath = os.path.join(data_dirpath, 'nonreblogs_descs', descs_fname)
+        outpath = os.path.join(data_dirpath, 'nonreblogs_descs_annotated', descs_fname)
 
-    print("Annotating identity categories...")
-    sys.stdout.flush()
-    ia = IdentityAnnotator(data_dirpath)
-    #descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
-    descs_annotated = multiprocess_annotate(ia, descs, desc_colname, eval_mode)
-    print('done.')
-    sys.stdout.flush()
+        print("Loading blog descriptions...", end=' ')
+        sys.stdout.flush()
+        if descs_fpath.endswith('.csv'):
+            descs = pd.read_csv(descs_fpath)
+        elif descs_fpath.endswith('.tsv'):
+            descs = pd.read_csv(descs_fpath, sep='\t')
+        elif descs_fpath.endswith('.pkl'):
+            descs = pd.read_pickle(descs_fpath)
+        else:
+            raise ValueError("Descriptions path not csv or pickle.")
+        print('done.')
+        sys.stdout.flush()
 
-    descs_annotated.to_pickle(outpath)
-    print("Saved annotated data to {}".format(outpath))
-    sys.stdout.flush()
+        print("Annotating identity categories...")
+        sys.stdout.flush()
+        ia = IdentityAnnotator(data_dirpath)
+        for desc_colname, suffix in zip(desc_colnames, ['follower', 'followee']):
+            #descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
+            descs_annotated = multiprocess_annotate(ia, descs, desc_colname, suffix, eval_mode)
+            print('done.')
+            sys.stdout.flush()
+
+        #descs_annotated.to_pickle(outpath)
+        descs_annotated.to_csv(outpath, sep='\t')
+        print("Saved annotated data to {}".format(outpath))
+        sys.stdout.flush()
 
     if eval_mode:
         ia.evaluate(descs)
