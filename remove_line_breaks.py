@@ -4,17 +4,21 @@ import pdb
 
 """ Remove line breaks from malformed CSVs from Pig """
 
-data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/nonreblogs_descs_orig'
+data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/test'
 #csv_fpath = os.path.join(data_dirpath, 'nonreblogs_descs_orig.tsv')
 csv_fpaths = [os.path.join(data_dirpath, f) for f in sorted(os.listdir(data_dirpath))]
+
+out_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/test'
+
 ncols = 51
 
 def main():
     
-    for i, csv_fpath in enumerate(csv_fpaths[84:]):
+    for i, csv_fpath in enumerate(csv_fpaths):
         print(csv_fpath)
 
         outlines = []
+        out_fpath = os.path.join(out_dirpath, csv_fpath + '_cleaned.tsv')
 
         # Read in line-by-line, split by '\t'
         with open(csv_fpath, 'r') as f:
@@ -68,9 +72,9 @@ def main():
                 pbar.update(1)
 
         # Save out outlines with line breaks
-        with open(csv_fpath + '_cleaned.tsv', 'w') as f:
+        with open(out_fpath, 'w') as f:
             f.write('\n'.join(outlines))
-        print("Wrote cleaned TSV")
+        tqdm.write("Wrote cleaned TSV")
         print()
 
 if __name__ == '__main__':
