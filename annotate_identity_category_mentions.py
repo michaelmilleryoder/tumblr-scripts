@@ -102,7 +102,6 @@ class IdentityAnnotator():
                     r'extrovert', 
                     r'ambivert',
                     r'\b[0-9]w[0-9]\b',
-                    r'\baries\b', r'\btaurus\b', r'\bgemini\b', r'\bcancer\b', r'\bleo\b', r'\bvirgo\b', r'\blibra\b', r'\bscorpius\b',
                     r'slytherin', r'ravenclaw', r'hufflepuff', r'gryffindor', # added by bootstrapping
                     r'neutral', r'chaotic', r'lawful', # added by bootstrapping
                     ],
@@ -445,11 +444,15 @@ def multiprocess_has_category(ia, cat, desc):
 def main():
 
     # I/O files
-    #data_dirpath = '/usr2/mamille2/tumblr/data'
-    data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200'
+    #data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200'
+    data_dirpath = '/usr2/mamille2/tumblr/data'
+    in_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_preprocessed')
+    out_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_annotated')
+    if not os.path.exists(out_dirpath):
+        os.mkdir(out_dirpath)
 
     #descs_path = os.path.join(data_dirpath, 'reblogs_descs.tsv')
-    descs_fnames = sorted(os.listdir(os.path.join(data_dirpath, 'nonreblogs_descs')))[42:]
+    descs_fnames = sorted(os.listdir(in_dirpath))[830:]
     #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
 
     #outpath = descs_path[:-4] + '_annotated.tsv'
@@ -464,10 +467,10 @@ def main():
 
     for descs_fname in tqdm(descs_fnames, ncols=50):
         tqdm.write(descs_fname)
-        descs_fpath = os.path.join(data_dirpath, 'nonreblogs_descs', descs_fname)
-        outpath = os.path.join(data_dirpath, 'nonreblogs_descs_annotated', descs_fname)
+        descs_fpath = os.path.join(in_dirpath, descs_fname)
+        outpath = os.path.join(out_dirpath, descs_fname)
 
-        print("Loading blog descriptions...", end=' ')
+        tqdm.write("Loading blog descriptions...")
         sys.stdout.flush()
         if descs_fpath.endswith('.csv'):
             descs = pd.read_csv(descs_fpath)
@@ -477,21 +480,19 @@ def main():
             descs = pd.read_pickle(descs_fpath)
         else:
             raise ValueError("Descriptions path not csv or pickle.")
-        print('done.')
         sys.stdout.flush()
 
-        print("Annotating identity categories...")
+        tqdm.write("Annotating identity categories...")
         sys.stdout.flush()
         ia = IdentityAnnotator(data_dirpath)
         for desc_colname, suffix in zip(desc_colnames, ['follower', 'followee']):
             #descs_annotated = ia.annotate(descs, desc_colname, eval_mode)
             descs_annotated = multiprocess_annotate(ia, descs, desc_colname, suffix, eval_mode)
-            print('done.')
             sys.stdout.flush()
 
         #descs_annotated.to_pickle(outpath)
-        descs_annotated.to_csv(outpath, sep='\t')
-        print("Saved annotated data to {}".format(outpath))
+        descs_annotated.to_csv(outpath, sep='\t', index=False)
+        tqdm.write("Saved annotated data to {}".format(outpath))
         sys.stdout.flush()
 
     if eval_mode:

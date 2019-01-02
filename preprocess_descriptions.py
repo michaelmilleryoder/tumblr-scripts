@@ -12,7 +12,7 @@ import warnings
 import pdb
 
 def load_data(desc_fpath):
-    tqdm.write("Loading data...", end=' ')
+    tqdm.write("Loading data...")
     sys.stdout.flush()
     
     if desc_fpath.endswith('.csv'):
@@ -23,7 +23,6 @@ def load_data(desc_fpath):
         desc_data = pd.read_pickle(desc_fpath)
     else:
         raise ValueError("Descriptions path not csv or pickle.")
-    tqdm.write("done.")
 
     # Remove duplicates by tumblog id
     #desc_data.drop_duplicates(inplace=True, subset=['tumblog_id'])
@@ -92,7 +91,7 @@ def process_date(datestr):
 
 def preprocess(desc_data, desc_colname):
     # Remove HTML tags
-    tqdm.write("Removing HTML tags...", end=' ')
+    tqdm.write("Removing HTML tags...")
     sys.stdout.flush()
     new_colname = f"processed_{desc_colname}"
 
@@ -104,7 +103,6 @@ def preprocess(desc_data, desc_colname):
 
     # Remove empty parsed blogs
     desc_data = desc_data[desc_data[new_colname].map(lambda x: len(x) > 0)]
-    tqdm.write("done\n")
 
     # # Process URLs (to hyphens) so don't interact with list descriptions
     #tqdm.write("Processing URLs...", end=' ')
@@ -221,19 +219,17 @@ def list_descriptions(desc_data, sep_chars_fpath, char_limit, list_desc_fpath):
     tqdm.write("Removing punctuation from segments...")
     restr_desc_data.loc[:, 'segments_25_nopunct'] = list(map(split_rm_punct, tqdm(restr_desc_data['restr_segments_25'].tolist())))
 
-    tqdm.write(f"Saving list descriptions to {list_desc_fpath}...", end=' ')
+    tqdm.write(f"Saving list descriptions to {list_desc_fpath}...")
     sys.stdout.flush()
     restr_desc_data.to_pickle(list_desc_fpath)
-    tqdm.write('done.')
 
     return restr_desc_data
 
 def save(desc_data, desc_fpath):
-    tqdm.write(f"Saving parsed blog descriptions to {desc_fpath}...", end=' ')
+    tqdm.write(f"Saving parsed blog descriptions to {desc_fpath}...")
     sys.stdout.flush()
     #desc_data.to_pickle(desc_fpath)
     desc_data.to_csv(desc_fpath, sep='\t', index=False)
-    tqdm.write('done\n')
 
 
 def main():
@@ -244,18 +240,23 @@ def main():
     # I/O
     #data_dirpath = '/usr0/home/mamille2/tumblr/data' 
     #data_dirpath = '/usr2/mamille2/tumblr/data' 
-    data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/' 
+    #data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/' 
+    data_dirpath = '/usr2/mamille2/tumblr/data/sample1k/' 
+    in_dirpath = os.path.join(data_dirpath, 'reblogs_descs_nodups')
+    out_dirpath = os.path.join(data_dirpath, 'reblogs_descs_preprocessed')
+    if not os.path.exists(out_dirpath):
+        os.mkdir(out_dirpath)
     #desc_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
     #desc_fpath = os.path.join(data_dirpath, 'reblogs_descs.tsv')
-    desc_fnames = sorted(os.listdir(os.path.join(data_dirpath, 'nonreblogs_descs_nodups')))[72:]
+    desc_fnames = sorted(os.listdir(in_dirpath))
     #list_desc_fpath = os.path.join(data_dirpath, f'bootstrapped_list_descriptions_recent100_restr{char_limit}.pkl')
     #sep_chars_fpath = os.path.join(data_dirpath, "common_sep_chars.pkl")
 
     desc_colnames = ['blog_description_follower', 'blog_description_followee']    
 
     for desc_fname in tqdm(desc_fnames, ncols=50):
-        desc_fpath = os.path.join(data_dirpath, 'nonreblogs_descs_nodups', desc_fname)
-        out_fpath = os.path.join(data_dirpath, 'nonreblogs_descs', desc_fname)
+        desc_fpath = os.path.join(in_dirpath, desc_fname)
+        out_fpath = os.path.join(out_dirpath, desc_fname)
 
         # Load data
         #descs, preprocessed = load_data(desc_fpath)
