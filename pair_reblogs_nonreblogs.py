@@ -63,42 +63,59 @@ def main():
     #                    
     #    pairings.extend([(reblog_idx, row_idx) for row_idx in keep])
 
-    paired_dict = defaultdict(list) # (reblog_post_id, tumblog_id_follower): [(nonreblog_row_idx, tumblog_id_followee)]
+    paired_dict = defaultdict(list) # (reblog_row_idx): [(nonreblog_row_idx, tumblog_id_followee)]
     pairings = [] # (reblog_row_idx, nonreblog_fname, nonreblog_row_idx)
     nonreblog_offset = 0
+    reblog_idx_lookup = {} # (reblog_post_id, tumblog_id_follower): reblog_row_idx
+        # need to build this beforehand so faster, then save and load
 
-    
-    for fname in tqdm(nonreblogs_fnames):
+    reblog_idx_lookup = reblogs.groupby(['post_id_follower', 'tumblog_id_follower']).groups
+
+    for fname in tqdm(nonreblogs_fnames, ncols=50):
         fpath = os.path.join(nonreblogs_dirpath, fname)
         nonreblogs = pd.read_csv(fpath, sep='\t')
 
         # Add offset to index
-        nonreblogs.reset_index(drop=True)
-        nonreblogs.index = nonreblogs.index + nonreblog_offset
+        #nonreblogs.reset_index(drop=True)
+        #nonreblogs.index = nonreblogs.index + nonreblog_offset
 
-        for reblog_row_idx, reblog_post_id, tumblog_id_follower, nonreblog_row_idx, tumblog_id_followee in zip(
-                reblogs.index,
+        for reblog_post_id, tumblog_id_follower, nonreblog_row_idx, tumblog_id_followee in zip(
                 nonreblogs['paired_reblog_post_id'],
                 nonreblogs['tumblog_id_follower'],
                 nonreblogs.index,
                 nonreblogs['tumblog_id_followee'],
             ):
+            
+            # Get reblog row index
+            #if not (reblog_post_id, tumblog_id_follower) in reblog_idx_lookup:
+            #    reblog_rows = reblogs[(reblogs['post_id_follower']==reblog_post_id) & \
+            #                            (reblogs['tumblog_id_follower']==tumblog_id_follower)]
+            #    if len(reblog_rows) > 1:
+            #        pdb.set_trace()
+            #    reblog_row_idx = reblog_rows.index[0]
+            #    reblog_idx_lookup[(reblog_post_id, tumblog_id_follower)] = reblog_row_idx
+
+            #else:
+            if not (reblog_post_id, tumblog_id_follower) in reblog_idx_lookup:
+                continue
+            reblog_row_idx = reblog_idx_lookup[(reblog_post_id, tumblog_id_follower)][0]
 
             # Check if have already reached 5 nonreblogs
-            if len(paired_dict[(reblog_post_id, tumblog_id_follower)]) == 5:
+            if len(paired_dict[reblog_row_idx]) == 5:
                 continue
 
             # Check that is a new followee
-            existing_nonreblog_followees = [followee for _,followee in paired_dict[(reblog_post_id, tumblog_id_follower)]]
+            existing_nonreblog_followees = [followee for _,followee in paired_dict[reblog_row_idx]]
         
             if not tumblog_id_followee in existing_nonreblog_followees:
-                paired_dict[(reblog_post_id, tumblog_id_follower)].append((nonreblog_row_idx, tumblog_id_followee))
+
+                paired_dict[reblog_row_idx].append((nonreblog_row_idx, tumblog_id_followee))
                 pairings.append((reblog_row_idx, fname, nonreblog_row_idx))
 
+
         # Save out nonreblogs with new row indices
-        nonreblogs.to_csv(fpath, sep='\t')
-        
-        nonreblog_offset += len(nonreblogs)
+        #nonreblogs.to_csv(fpath, sep='\t')
+        #nonreblog_offset += len(nonreblogs)
         
     print(f'Number of pairings: {len(pairings)}')
 
