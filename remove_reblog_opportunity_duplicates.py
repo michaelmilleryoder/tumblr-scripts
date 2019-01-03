@@ -18,7 +18,7 @@ selector = 'reblogs'
 
 def main():
 
-
+    # Drop columns, rename columns
     for data_fname in tqdm(data_fnames):
         tqdm.write(data_fname)
         data_fpath = os.path.join(in_dirpath, data_fname)
@@ -49,7 +49,6 @@ def main():
             'followee::timezone': 'timezone_followee',
             'followee::language': 'language_followee',
             'followee::blog_classifier': 'blog_classifier_followee',
-            'reblogs::follower::tumblog_id': 'tumblog_id_follower',
             'reblogs::follower::blog_description': 'blog_description_follower',
             'reblogs::follower::blog_name': 'blog_name_follower',
             'reblogs::follower::blog_title': 'blog_title_follower',
@@ -61,41 +60,25 @@ def main():
             'reblogs::follower::timezone': 'timezone_follower',
             'reblogs::follower::language': 'language_follower',
             'reblogs::follower::blog_classifier': 'blog_classifier_follower',
-            'reblogs::reblogs::post_id': 'post_id',
-            'reblogs::reblogs::activity_time_epoch_post': 'activity_time_epoch_post',
-            'reblogs::reblogs::is_private': 'is_private_post',
-            'reblogs::reblogs::post_title': 'post_title',
-            'reblogs::reblogs::post_short_url': 'post_short_url',
-            'reblogs::reblogs::post_slug': 'post_slug',
-            'reblogs::reblogs::post_type': 'post_type',
-            'reblogs::reblogs::post_caption': 'post_caption',
-            'reblogs::reblogs::post_format': 'post_format',
-            'reblogs::reblogs::post_note_count': 'post_note_count',
-            'reblogs::reblogs::post_tags': 'post_tags',
-            'reblogs::reblogs::post_content': 'post_content',
-            'reblogs::reblogs::reblogged_from_post_id': 'reblogged_from_post_id',
-            'reblogs::reblogs::reblogged_from_metadata': 'reblogged_from_metadata',
-            'reblogs::reblogs::created_time_epoch_post': 'created_time_epoch_post',
-            'reblogs::reblogs::updated_time_epoch_post': 'updated_time_epoch_post',
-            'reblogs::reblogs::is_submission': 'is_submission',
-            'reblogs::reblogs::mentions': 'mentions',
-            'reblogs::reblogs::source_title': 'source_title',
-            'reblogs::reblogs::source_url': 'source_url',
-            'reblogs::reblogs::post_classifier': 'post_classifier',
-            'reblogs::reblogs::activity_date_post': 'activity_date_post',
-            'reblogs::reblogs::tumblog_id_followee': 'tumblog_id_followee',
-            'reblogs::reblogs::activity_time_epoch_follow': 'activity_time_epoch_follow',
+            'reblogs::follower::tumblog_id': 'tumblog_id_follower',
         }, inplace=True)
+        
+        if selector == 'reblogs':
+            rename_dict = {col: col.split('::')[-1] for col in data.columns.tolist() if col.startswith('reblogs::reblogs::')}
+            data.rename(columns=rename_dict, inplace=True)
 
+
+        # Drop NaN rows, de-duplicate
         tqdm.write("Removing duplicates...")
         tqdm.write(f"Original length: {len(data)}")
         
         if selector == 'nonreblogs':
             data.dropna(subset=['post_id', 'tumblog_id_followee', 'tumblog_id_follower', 'paired_reblog_post_id'], inplace=True)
             data.drop_duplicates(subset=['post_id', 'tumblog_id_followee', 'tumblog_id_follower', 'paired_reblog_post_id'], inplace=True)
+
         elif selector == 'reblogs':
-            data.dropna(subset=['post_id', 'tumblog_id_followee', 'tumblog_id_follower'], inplace=True)
-            data.drop_duplicates(subset=['post_id', 'tumblog_id_followee', 'tumblog_id_follower'], inplace=True)
+            data.dropna(subset=['post_id_follower', 'tumblog_id_followee', 'tumblog_id_follower'], inplace=True)
+            data.drop_duplicates(subset=['post_id_follower', 'tumblog_id_followee', 'tumblog_id_follower'], inplace=True)
         tqdm.write(f"De-duplicated length: {len(data)}")
 
         out_fpath = os.path.join(out_dirpath, data_fname)

@@ -446,13 +446,15 @@ def main():
     # I/O files
     #data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200'
     data_dirpath = '/usr2/mamille2/tumblr/data'
-    in_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_preprocessed')
-    out_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_annotated')
+    #in_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_preprocessed')
+    #out_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_annotated')
+    in_dirpath = os.path.join(data_dirpath, 'sample1k', 'reblogs_descs_preprocessed')
+    out_dirpath = os.path.join(data_dirpath, 'sample1k', 'reblogs_descs_annotated')
     if not os.path.exists(out_dirpath):
         os.mkdir(out_dirpath)
 
     #descs_path = os.path.join(data_dirpath, 'reblogs_descs.tsv')
-    descs_fnames = sorted(os.listdir(in_dirpath))[830:]
+    descs_fnames = sorted(os.listdir(in_dirpath))
     #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
 
     #outpath = descs_path[:-4] + '_annotated.tsv'
