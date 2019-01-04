@@ -6,7 +6,7 @@ import random
 import re
 from tqdm import tqdm
 import pdb
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
 
 # I/O
 tumblr_dir = '/usr2/mamille2/tumblr/data/sample1k/'
@@ -26,12 +26,13 @@ labels_outpath = os.path.join(out_dirpath, 'ranking_labels.csv')
 
 # Load reblogs
 print("Loading reblogs...")
-reblog_dataframe = pd.read_csv(reblog_fpath, sep='\t')
+reblog_dataframe = pd.read_csv(reblog_fpath, sep='\t', low_memory=False)
 
 # Define output structures
-reblog_write = []
-nonreblog_write = []
-labels_write = []
+manager = Manager()
+reblog_write = manager.list()
+nonreblog_write = manager.list()
+labels_write = manager.list()
 
 # Read in pairings
 pairings = pd.read_csv(pairings_fpath, header=None, names=['reblog_row_idx', 'nonreblog_fname', 'nonreblog_row_idx']).sort_values('nonreblog_fname')
@@ -85,15 +86,21 @@ def process_df(df):
     """ Remove nan strings, fix tag parentheses issue """
 
     # Remove nan strings
-    nan_cols = {
+    nan_str_cols = {
                  'post_tags': '{}',
-                 #'post_note_count': 0.0,
                 'processed_blog_description_follower': '',
                 'processed_blog_description_followee': ''
                 }
-    for col, replacement in nan_cols.items():
+    for col, replacement in nan_str_cols.items():
         df[col] = df[col].str.replace('nan', replacement)
         #df.loc[df[col]=='nan', col] = replacement
+
+    # Remove nans from float columns
+    nan_float_cols = {
+                 'post_note_count': 0.0,
+    }
+    for col in nan_float_cols:
+        df[col] = df[col].fillna(0.0)
 
     # Fix tag final parentheses issue
     df['post_tags'] = df['post_tags'].map(parse_tags)
@@ -107,7 +114,7 @@ def process_nonreblog_file(nonreblog_fname):
     labels_write_lines = []
 
     nonreblogs_fpath = os.path.join(nonreblogs_dirpath, nonreblog_fname)
-    nonreblogs = pd.read_csv(nonreblogs_fpath, sep='\t')
+    nonreblogs = pd.read_csv(nonreblogs_fpath, sep='\t', low_memory=False)
 
     if not nonreblog_fname in nonreblog_fname_reblogs_map:
         return
@@ -156,7 +163,7 @@ def main():
     #labels_write = [['ranking_label']]
 
     with Pool(15) as pool:
-        list(tqdm(pool.imap(process_nonreblog_file, nonreblog_filenames), total=len(nonreblog_filenames)))
+        list(tqdm(pool.imap(process_nonreblog_file, nonreblog_filenames), total=len(nonreblog_filenames), ncols=50))
 
     #for nonreblog_fname in tqdm(nonreblog_fname_reblogs_map):
     ##for nonreblog_fname in tqdm(list(nonreblog_fname_reblogs_map.keys())[:1]):
@@ -175,25 +182,31 @@ def main():
     #        nonreblog_write.append(nonreblog_row_values)
     #        labels_write.append([label])
 
-    #reblog_file_writer = csv.writer(open(reblogs_outpath, 'w'))
-    #reblog_file_writer.writerows(reblog_write)
-    #reblog_file_writer.close()
+    print("Saving output...")
+    reblog_file_writer = csv.writer(open(reblogs_outpath, 'w'))
+    reblog_file_writer.writerow(nonreblog_labels_to_extract)
+    reblog_file_writer.writerows(reblog_write)
 
-    #nonreblog_file_writer = csv.writer(open(nonreblogs_outpath, 'w'))
-    #nonreblog_file_writer.writerows(nonreblog_write)
-    #nonreblog_file_writer.close()
+    nonreblog_file_writer = csv.writer(open(nonreblogs_outpath, 'w'))
+    nonreblog_file_writer.writerow(nonreblog_labels_to_extract)
+    nonreblog_file_writer.writerows(nonreblog_write)
 
     labels_writer = csv.writer(open(labels_outpath, 'w'))
+    labels_writer.writerow(['ranking_label'])
     labels_writer.writerows(labels_write)
 
     # Postprocess
-    out_reblog_df = pd.DataFrame(reblog_write, columns=nonreblog_labels_to_extract)
-    out_nonreblog_df = pd.DataFrame(nonreblog_write, columns=nonreblog_labels_to_extract)
+    print("Postprocessing and saving again...")
+    #out_reblog_df = pd.DataFrame(reblog_write, columns=nonreblog_labels_to_extract) # MemoryError
+    #out_nonreblog_df = pd.DataFrame(nonreblog_write, columns=nonreblog_labels_to_extract) # MemoryError
+
+    out_reblog_df = pd.read_csv(reblogs_outpath)
+    out_nonreblog_df = pd.read_csv(nonreblogs_outpath)
 
     out_reblog_df = process_df(out_reblog_df)
     out_nonreblog_df = process_df(out_nonreblog_df)
 
-    out_reblog_df.to_csv(reblogs_outpath, index=False)
-    out_nonreblog_df.to_csv(nonreblogs_outpath, index=False)
+    out_reblog_df.to_csv(reblogs_outpath, index=False, encoding='utf8')
+    out_nonreblog_df.to_csv(nonreblogs_outpath, index=False, encoding='utf8')
 
 if __name__ == '__main__': main()
