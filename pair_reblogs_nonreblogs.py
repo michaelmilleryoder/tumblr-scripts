@@ -13,14 +13,11 @@ def main():
     reblogs_fpath = os.path.join(data_dirpath, 'reblogs_descs_annotated', 'reblogs_descs.tsv')
     nonreblogs_dirpath = os.path.join(data_dirpath, 'nonreblogs_descs_match')
 
-    out_nonreblogs_dirpath = os.path.join(data_dirpath, 'nonreblogs_descs_paired')
-    if not os.path.exists(out_nonreblogs_dirpath):
-        os.mkdir(out_nonreblogs_dirpath)
     pairings_fpath = os.path.join(data_dirpath, 'pairings_reblogs_nonreblogs.csv')
 
     # Load reblogs
     print("Loading reblogs...")
-    reblogs = pd.read_csv(reblogs_fpath, sep='\t')
+    reblogs = pd.read_csv(reblogs_fpath, sep='\t', low_memory=False)
 
     # Load nonreblogs
     nonreblogs_fnames = sorted(os.listdir(nonreblogs_dirpath))
@@ -65,7 +62,7 @@ def main():
 
     paired_dict = defaultdict(list) # (reblog_row_idx): [(nonreblog_row_idx, tumblog_id_followee)]
     pairings = [] # (reblog_row_idx, nonreblog_fname, nonreblog_row_idx)
-    nonreblog_offset = 0
+    #nonreblog_offset = 0
     reblog_idx_lookup = {} # (reblog_post_id, tumblog_id_follower): reblog_row_idx
         # need to build this beforehand so faster, then save and load
 
@@ -73,7 +70,7 @@ def main():
 
     for fname in tqdm(nonreblogs_fnames, ncols=50):
         fpath = os.path.join(nonreblogs_dirpath, fname)
-        nonreblogs = pd.read_csv(fpath, sep='\t')
+        nonreblogs = pd.read_csv(fpath, sep='\t', low_memory=False)
 
         # Add offset to index
         #nonreblogs.reset_index(drop=True)
@@ -111,6 +108,8 @@ def main():
 
                 paired_dict[reblog_row_idx].append((nonreblog_row_idx, tumblog_id_followee))
                 pairings.append((reblog_row_idx, fname, nonreblog_row_idx))
+                if reblogs.loc[reblog_row_idx, 'tumblog_id_follower'] != nonreblogs.loc[nonreblog_row_idx, 'tumblog_id_follower']:
+                    pdb.set_trace()
 
 
         # Save out nonreblogs with new row indices

@@ -82,6 +82,24 @@ def parse_tags(tags):
     matches = [paren_process(x[1:-1]) for x in matches]
     return matches
 
+def remove_mismatches(reblogs, nonreblogs):
+    
+    # Remove mismatched follower tumblog IDs
+    mismatched_row_idx = []
+
+    for i, (reblog_follower_id, nonreblog_follower_id) in enumerate(list(zip(reblogs['tumblog_id_follower'].tolist(), 
+                                       nonreblogs['tumblog_id_follower'].tolist()))):
+        if reblog_follower_id != nonreblog_follower_id:
+            mismatched_row_idx.append(i)
+
+    # Remove from reblogs
+    reblogs = reblogs.loc[~reblogs.index.isin(mismatched_row_idx)]
+
+    # Remove from nonreblogs
+    nonreblogs = nonreblogs.loc[~nonreblogs.index.isin(mismatched_row_idx)]
+
+    return reblogs, nonreblogs
+
 def process_df(df):
     """ Remove nan strings, fix tag parentheses issue """
 
@@ -120,13 +138,22 @@ def process_nonreblog_file(nonreblog_fname):
         return
 
     for reblog_id, nonreblog_id in nonreblog_fname_reblogs_map[nonreblog_fname]:
-        reblog_row = reblog_dataframe.iloc[reblog_id]
-        reblog_row_values = [reblog_row[label] for label in reblog_labels_to_extract]
-        #nonreblog_row_values = nonreblogs.iloc[nonreblog_id], nonreblog_labels_to_extract]
-        nonreblog_row = nonreblogs.iloc[nonreblog_id]
-        nonreblog_row_values = [nonreblog_row[label] for label in nonreblog_labels_to_extract]
-        label = random.randint(0, 1)
+        if reblog_dataframe.loc[reblog_id, 'tumblog_id_follower'] != nonreblogs.loc[nonreblog_id, 'tumblog_id_follower']:
+            pdb.set_trace()
 
+        reblog_row_values = reblog_dataframe.loc[reblog_id, reblog_labels_to_extract].values.tolist()
+        #reblog_row = reblog_dataframe.loc[reblog_id]
+        #reblog_row_values = [reblog_row[label] for label in reblog_labels_to_extract]
+        nonreblog_row_values = nonreblogs.loc[nonreblog_id, nonreblog_labels_to_extract].values.tolist()
+#        nonreblog_row = nonreblogs.loc[nonreblog_id]
+#        nonreblog_row_values = [nonreblog_row[label] for label in nonreblog_labels_to_extract]
+        label = random.randint(0, 1)
+        
+        if reblog_row_values[1] != nonreblog_row_values[1]: # tumblog_id_follower check
+            pdb.set_trace()
+
+        if reblog_row_values[1] == 34015569 and len(reblog_write) > 400000:
+            pdb.set_trace()
         reblog_write_lines.append(reblog_row_values)
         nonreblog_write_lines.append(nonreblog_row_values)
         labels_write_lines.append([label])
@@ -162,38 +189,41 @@ def main():
     #nonreblog_write = []
     #labels_write = [['ranking_label']]
 
-    with Pool(15) as pool:
-        list(tqdm(pool.imap(process_nonreblog_file, nonreblog_filenames), total=len(nonreblog_filenames), ncols=50))
+    #with Pool(15) as pool:
+    #    list(tqdm(pool.imap(process_nonreblog_file, nonreblog_filenames), total=len(nonreblog_filenames), ncols=50))
 
-    #for nonreblog_fname in tqdm(nonreblog_fname_reblogs_map):
-    ##for nonreblog_fname in tqdm(list(nonreblog_fname_reblogs_map.keys())[:1]):
-    #    nonreblogs_fpath = os.path.join(nonreblogs_dirpath, nonreblog_fname)
-    #    nonreblogs = pd.read_csv(nonreblogs_fpath, sep='\t')
+    ## for debugging
+    ##list(map(process_nonreblog_file, tqdm(nonreblog_filenames)))
 
-    #    for reblog_id, nonreblog_id in nonreblog_fname_reblogs_map[nonreblog_fname]:
-    #        reblog_row = reblog_dataframe.iloc[reblog_id]
-    #        reblog_row_values = [reblog_row[label] for label in reblog_labels_to_extract]
-    #        #nonreblog_row_values = nonreblogs.iloc[nonreblog_id], nonreblog_labels_to_extract]
-    #        nonreblog_row = nonreblogs.iloc[nonreblog_id]
-    #        nonreblog_row_values = [nonreblog_row[label] for label in nonreblog_labels_to_extract]
-    #        label = random.randint(0, 1)
+    ##for nonreblog_fname in tqdm(nonreblog_fname_reblogs_map):
+    ###for nonreblog_fname in tqdm(list(nonreblog_fname_reblogs_map.keys())[:1]):
+    ##    nonreblogs_fpath = os.path.join(nonreblogs_dirpath, nonreblog_fname)
+    ##    nonreblogs = pd.read_csv(nonreblogs_fpath, sep='\t')
 
-    #        reblog_write.append(reblog_row_values)
-    #        nonreblog_write.append(nonreblog_row_values)
-    #        labels_write.append([label])
+    ##    for reblog_id, nonreblog_id in nonreblog_fname_reblogs_map[nonreblog_fname]:
+    ##        reblog_row = reblog_dataframe.iloc[reblog_id]
+    ##        reblog_row_values = [reblog_row[label] for label in reblog_labels_to_extract]
+    ##        #nonreblog_row_values = nonreblogs.iloc[nonreblog_id], nonreblog_labels_to_extract]
+    ##        nonreblog_row = nonreblogs.iloc[nonreblog_id]
+    ##        nonreblog_row_values = [nonreblog_row[label] for label in nonreblog_labels_to_extract]
+    ##        label = random.randint(0, 1)
 
-    print("Saving output...")
-    reblog_file_writer = csv.writer(open(reblogs_outpath, 'w'))
-    reblog_file_writer.writerow(nonreblog_labels_to_extract)
-    reblog_file_writer.writerows(reblog_write)
+    ##        reblog_write.append(reblog_row_values)
+    ##        nonreblog_write.append(nonreblog_row_values)
+    ##        labels_write.append([label])
 
-    nonreblog_file_writer = csv.writer(open(nonreblogs_outpath, 'w'))
-    nonreblog_file_writer.writerow(nonreblog_labels_to_extract)
-    nonreblog_file_writer.writerows(nonreblog_write)
+    #print("Saving output...")
+    #reblog_file_writer = csv.writer(open(reblogs_outpath, 'w'))
+    #reblog_file_writer.writerow(nonreblog_labels_to_extract)
+    #reblog_file_writer.writerows(reblog_write)
 
-    labels_writer = csv.writer(open(labels_outpath, 'w'))
-    labels_writer.writerow(['ranking_label'])
-    labels_writer.writerows(labels_write)
+    #nonreblog_file_writer = csv.writer(open(nonreblogs_outpath, 'w'))
+    #nonreblog_file_writer.writerow(nonreblog_labels_to_extract)
+    #nonreblog_file_writer.writerows(nonreblog_write)
+
+    #labels_writer = csv.writer(open(labels_outpath, 'w'))
+    #labels_writer.writerow(['ranking_label'])
+    #labels_writer.writerows(labels_write)
 
     # Postprocess
     print("Postprocessing and saving again...")
@@ -205,6 +235,9 @@ def main():
 
     out_reblog_df = process_df(out_reblog_df)
     out_nonreblog_df = process_df(out_nonreblog_df)
+
+    out_reblog_df, out_nonreblog_df = remove_mismatches(out_reblog_df, out_nonreblog_df)
+    print(len(out_reblog_df))
 
     out_reblog_df.to_csv(reblogs_outpath, index=False, encoding='utf8')
     out_nonreblog_df.to_csv(nonreblogs_outpath, index=False, encoding='utf8')

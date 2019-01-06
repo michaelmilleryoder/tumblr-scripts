@@ -28,11 +28,6 @@ def main():
         #for i in range(3):
         #    data.drop(f"EXTRA{i}", axis=1, inplace=True)
 
-        # Check for header rows
-#        if 'post_id' in data['post_id']:
-#            hdr_rows = data[data['post_id']=='post_id'].index
-#            data.drop(hdr_rows, inplace=True)
-
         # Rename, drop columns
         data.drop('followee::tumblog_id', axis=1, inplace=True)
         data.drop('reblogs::reblogs::tumblog_id_follower', axis=1, inplace=True)
@@ -66,6 +61,12 @@ def main():
         if selector == 'reblogs':
             rename_dict = {col: col.split('::')[-1] for col in data.columns.tolist() if col.startswith('reblogs::reblogs::')}
             data.rename(columns=rename_dict, inplace=True)
+
+        # Check for header rows
+        if any([':' in x for x in data['tumblog_id_follower'].values.tolist()]):
+            example = data.loc[[':' in x for x in data['tumblog_id_follower'].values.tolist()].index(True), 'tumblog_id_follower']
+            hdr_rows = data[data['tumblog_id_follower']==example].index
+            data.drop(hdr_rows, inplace=True)
 
 
         # Drop NaN rows, de-duplicate

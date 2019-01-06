@@ -396,11 +396,6 @@ class IdentityAnnotator():
         return matches, presence
 
 
-    def _preprocess_pronouns(pronouns_str):
-        if len(pronouns_str) == 2:
-            return pronouns_str
-        
-        return ["'" + re.sub(r'\W', '', p.lower()) + "'" for p in pronouns_str[1:-1].split(', ')]
 
 
     def annotate(self, descs, desc_colname, suffix, eval_mode):
@@ -421,7 +416,7 @@ class IdentityAnnotator():
                 descs[desc_colname].tolist())))))
         
         # Postprocess
-        descs[f'pronoun_terms_{suffix}'] = descs[f'pronoun_terms_{suffix}'].map(_preprocess_pronouns)
+        descs[f'pronouns_terms_{suffix}'] = descs[f'pronouns_terms_{suffix}'].map(preprocess_pronouns)
 
         return descs
 
@@ -451,6 +446,11 @@ def multiprocess_annotate(ia, descs, desc_colname, suffix, eval_mode):
 def multiprocess_has_category(ia, cat, desc):
     return ia._has_category(cat, desc)
 
+def preprocess_pronouns(pronouns):
+    if len(pronouns) == 0:
+        return pronouns
+    
+    return [re.sub(r'\W', '', p.lower()) for p in pronouns] # may need to manipulate outside quotes
 
 def main():
 
@@ -494,7 +494,7 @@ def main():
         else:
             raise ValueError("Descriptions path not csv or pickle.")
         sys.stdout.flush()
-
+        
         tqdm.write("Annotating identity categories...")
         sys.stdout.flush()
         ia = IdentityAnnotator(data_dirpath)
