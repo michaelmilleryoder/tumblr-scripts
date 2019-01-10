@@ -395,6 +395,9 @@ class IdentityAnnotator():
 
         return matches, presence
 
+
+
+
     def annotate(self, descs, desc_colname, suffix, eval_mode):
         """ By default, does multiprocessing """
 
@@ -411,6 +414,9 @@ class IdentityAnnotator():
             zip(repeat(self), 
                 repeat(cat),
                 descs[desc_colname].tolist())))))
+        
+        # Postprocess
+        descs[f'pronouns_terms_{suffix}'] = descs[f'pronouns_terms_{suffix}'].map(preprocess_pronouns)
 
         return descs
 
@@ -440,19 +446,26 @@ def multiprocess_annotate(ia, descs, desc_colname, suffix, eval_mode):
 def multiprocess_has_category(ia, cat, desc):
     return ia._has_category(cat, desc)
 
+def preprocess_pronouns(pronouns):
+    if len(pronouns) == 0:
+        return pronouns
+    
+    return [re.sub(r'\W', '', p.lower()) for p in pronouns] # may need to manipulate outside quotes
 
 def main():
 
     # I/O files
     #data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200'
     data_dirpath = '/usr2/mamille2/tumblr/data'
-    in_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_preprocessed')
-    out_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_annotated')
+    #in_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_preprocessed')
+    #out_dirpath = os.path.join(data_dirpath, 'sample1k', 'nonreblogs_descs_annotated')
+    in_dirpath = os.path.join(data_dirpath, 'sample1k', 'reblogs_descs_preprocessed')
+    out_dirpath = os.path.join(data_dirpath, 'sample1k', 'reblogs_descs_annotated')
     if not os.path.exists(out_dirpath):
         os.mkdir(out_dirpath)
 
     #descs_path = os.path.join(data_dirpath, 'reblogs_descs.tsv')
-    descs_fnames = sorted(os.listdir(in_dirpath))[830:]
+    descs_fnames = sorted(os.listdir(in_dirpath))
     #descs_path = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
 
     #outpath = descs_path[:-4] + '_annotated.tsv'
@@ -481,7 +494,7 @@ def main():
         else:
             raise ValueError("Descriptions path not csv or pickle.")
         sys.stdout.flush()
-
+        
         tqdm.write("Annotating identity categories...")
         sys.stdout.flush()
         ia = IdentityAnnotator(data_dirpath)

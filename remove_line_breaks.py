@@ -12,7 +12,7 @@ out_dirpath = '/usr2/mamille2/tumblr/data/sample1k/reblogs_descs_cleaned'
 #csv_fnames = [f for f in sorted(os.listdir(data_dirpath)) if f.startswith('part')]
 csv_fnames = sorted(os.listdir(data_dirpath))
 #ncols = 51 # nonreblogs
-ncols = 50 # reblogs
+ncols = 60 # reblogs
 
 if not os.path.exists(out_dirpath):
     os.mkdir(out_dirpath)
@@ -20,7 +20,6 @@ if not os.path.exists(out_dirpath):
 
 def process_csv(csv_fname):
 
-        pdb.set_trace()
         tqdm.write(csv_fname)
         csv_fpath = os.path.join(data_dirpath, csv_fname)
 
@@ -86,11 +85,11 @@ def process_csv(csv_fname):
 
 def main():
     
-    #for csv_fname in tqdm(csv_fnames):
-    #    process_csv(csv_fname)
+    for csv_fname in tqdm(csv_fnames):
+        process_csv(csv_fname)
     #map(process_csv, tqdm(csv_fnames))
-    with Pool(15) as pool:
-        tqdm(pool.imap(process_csv, csv_fnames), total=len(csv_fnames)) # tqdm might not work
+    #with Pool(15) as pool:
+    #    tqdm(pool.imap(process_csv, csv_fnames), total=len(csv_fnames)) # doesn't work right--should fix
         #pool.map(process_csv, tqdm(csv_fnames)) # tqdm might not work
 
 
