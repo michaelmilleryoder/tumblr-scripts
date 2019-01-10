@@ -2,6 +2,105 @@ import csv
 import os
 import codecs
 from collections import defaultdict
+from sklearn import feature_extraction
+from sklearn import linear_model
+from sklearn import model_selection
+from sklearn import preprocessing
+from sklearn import svm
+import numpy as np
+from statsmodels.stats.contingency_tables import mcnemar
+from tqdm import tqdm
+import pickle
+import pdb
+import argparse
+import copy
+from operator import itemgetter
+
+
+def variance_analysis(instances, identity_categories):
+    """ Returns: category_user_remove, a hashmap of a set of users who have zero presence of the category and all their followees also have zero presence of the category """
+
+    follower_category_variance = defaultdict(lambda: defaultdict(lambda: []))
+    follower_followee_counted = defaultdict(lambda: set())
+
+    def _variance_analysis(candidate, follower_category_variance):
+        """ Build follower_category_variance hashmap """
+        follower_id = candidate['tumblog_id_follower']
+
+        for identity_category in identity_categories:
+            # Do not consider for remove list if follower has cateogry presence
+            identity_category_follower = eval(candidate[identity_category + '_terms_follower'])
+            follower_presence = len(identity_category_follower) > 0
+            if follower_presence: continue
+
+            identity_category_followee = eval(candidate[identity_category + '_terms_followee'])
+            followee_presence = len(identity_category_followee) > 0
+
+            if followee_presence:
+                follower_category_variance[identity_category][follower_id].append(1)
+            else:
+                follower_category_variance[identity_category][follower_id].append(0)
+
+    for reblog_candidate, nonreblog_candidate in instances:
+        follower_id = reblog_candidate['tumblog_id_follower']
+        followee_id_1 = reblog_candidate['tumblog_id_followee']
+
+        if not followee_id_1 in follower_followee_counted[follower_id]:
+            _variance_analysis(reblog_candidate, follower_category_variance)
+            follower_followee_counted[follower_id].add(followee_id_1)
+        
+        followee_id_2 = nonreblog_candidate['tumblog_id_followee']        
+        if not followee_id_2 in follower_followee_counted[follower_id]:
+            _variance_analysis(nonreblog_candidate, follower_category_variance)
+            follower_followee_counted[follower_id].add(followee_id_2)
+
+    #category_variance = defaultdict(lambda: [])
+    category_user_remove = defaultdict(lambda: set())
+    for identity_category in follower_category_variance:
+        for follower_id in follower_category_variance[identity_category]:
+            #var = np.var(follower_category_variance[identity_category][follower_id])
+            all_zeros = all(p == 0 for p in follower_category_variance[identity_category][follower_id])
+            #if var == 0:
+            if all_zeros:
+                category_user_remove[identity_category].add(follower_id)
+            #category_variance[identity_category].append(var)
+    
+    return category_user_remove
+
+
+def run_mcnemar(baseline_pred, experiment_pred, y_test):
+    # # McNemar's Test (Significance)
+    # In[ ]:
+    a = 0
+    b = 0 # Baseline correct, experiment incorrect
+    c = 0 # Baseline incorrect, experiment correct
+    d = 0
+    for b_pred, ex_pred, true in zip(baseline_pred, experiment_pred, y_test):
+        if b_pred == true and ex_pred == true:
+            a += 1
+        elif b_pred == true and ex_pred != true:
+            b += 1
+        elif b_pred != true and ex_pred == true:
+            c += 1
+        else:
+            d += 1
+            
+    table = [[a, b],
+             [c, d]]
+
+    # Example of calculating the mcnemar test
+    # calculate mcnemar test
+    result = mcnemar(table, exact=False, correction=False)
+    # summarize the finding
+    #print('statistic=%.3f, p-value=%.6f' % (result.statistic, result.pvalue))
+    # interpret the p-value
+    alpha = 0.05
+    if result.pvalue > alpha:
+            print('Same proportions of errors (fail to reject H0)')
+    else:
+            print('Different proportions of errors (reject H0)')
+    
+    return result
 
 
 def _str2list(in_str):
@@ -18,29 +117,77 @@ def update_tag_counts(tag_counts, counted_ids, candidate): # for hashtags
             counted_ids[tag].add(followee_id)
 
 
-# Comparison space features
-def _extract_features_post_baseline_candidate(candidate, incr):
-    candidate_tags = [tag.lower() for tag in eval(candidate['post_tags'])]
-    for tag in candidate_tags:
-        if tag.lower() in tag_vocab:
-            feat_tag = ('tag=%s' % tag.lower())
-            features[feat_tag] += incr
-
-    post_type = candidate['post_type']
-    feat_tag = ('post_type=%s' % post_type)
-    features[feat_tag] += incr
+def get_groups():
+    """ Grouped features for experiment 2 """
+    groups = {
     
-    try:
-        post_note_count = float(candidate['post_note_count'])
-    except ValueError as e:
-        post_note_count = 0.0
-        
-    features['post_note_count'] += incr * post_note_count
-        
+        'age': {'sixteen': [16],
+                'twenty': [20],
+                }, # words to numbers
+        'gender': {'guy': ['M'],
+                'man': ['M'],
+                'male': ['M'],
+                'brother': ['M'],
+                'girl': ['F'],
+                'woman': ['F'],
+                'wife': ['F'],
+                'female': ['F'],
+                'mom': ['F'],
+                'princess': ['F'],
+                },
+        'location': {'u.k': ['uk'],
+                }
+        'relationship status': {'single': ['single'],
+                                'couple': ['attached'],
+                                'taken': ['attached'],
+                                'husband': ['attached'],
+                                'wife': ['attached'],
+                                'in a relationship': ['attached'],
+                                'married': ['attached'],
+                                'engaged': ['attached'],
+                },
+        'sexual orientation': {'bisexual': ['queer'],
+                                'bi': ['bisexual', 'queer']
+                                'ace': ['asexual', 'queer'],
+                                'asexual': ['queer'],
+                                'pansexual': ['queer'],
+                                'lesbian': ['queer'],
+                                'gay': ['queer'],
+                                'lgbt': ['queer'],
+                                'queer': ['queer'],
+                                'homo': ['queer'],
+                                'wlw': ['lesbian', 'queer']
+                                'straight': ['straight'],
+                },
 
-def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label):
+    }   
+
+    return groups
+
+
+def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
     ### Post baseline
     features = defaultdict(float) # {feat: count} for each instance
+    tag_vocab = extras[0]
+
+    def _extract_features_post_baseline_candidate(candidate, incr):
+        candidate_tags = [tag.lower() for tag in eval(candidate['post_tags'])]
+        for tag in candidate_tags:
+            if tag.lower() in tag_vocab:
+                feat_tag = ('tag=%s' % tag.lower())
+                features[feat_tag] += incr
+
+        post_type = candidate['post_type']
+        feat_tag = ('post_type=%s' % post_type)
+        features[feat_tag] += incr
+        
+        try:
+            post_note_count = float(candidate['post_note_count'])
+        except ValueError as e:
+            post_note_count = 0.0
+            
+        features['post_note_count'] += incr * post_note_count
+        
     # if randomly-generated label is 1, second candidate is reblog, so flip: -1 is whatever candidate should consider first
     if label == 1: 
         _extract_features_post_baseline_candidate(nonreblog_candidate, incr=-1)
@@ -52,340 +199,418 @@ def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label)
     return features
 
 
+def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
+    # Experiment 1 - Identity framing, presence of variables
+    features = defaultdict(float)
+
+    # Follower-followee comparison space features
+    def _extract_features_experiment_1_candidate(candidate, incr):
+        
+        num_matches = 0
+        num_mismatched_follower_presents = 0
+        num_mismatched_followee_presents = 0
+        
+        for identity_category in categories:
+            identity_category_follower = eval(reblog_candidate[identity_category + '_terms_follower'])
+            follower_presence = len(identity_category_follower) > 0
+            identity_category_followee = eval(candidate[identity_category + '_terms_followee'])
+            followee_presence = len(identity_category_followee) > 0
+    #             if followee_presence:
+    #                 feat_tag = ('followee_cat=%s' % identity_category)
+    #                 features[feat_tag] += incr
+
+            # Alignment features
+    #             if ((follower_presence and followee_presence) or
+    #                 (not follower_presence and not followee_presence)):
+            # AND
+            if (follower_presence and followee_presence): # AND
+                feat_tag = ('aligned_cat=%s' % identity_category)
+                features[feat_tag] += incr
+                num_matches += 1
+                
+            # XOR
+            if (follower_presence and not followee_presence):
+                feat_tag = ('mismatched_follower_presents_cat=%s' % identity_category)
+                features[feat_tag] += incr
+                feat_tag = ('xor_cat=%s' % identity_category)
+                features[feat_tag] += incr
+                num_mismatched_follower_presents += 1
+            elif (not follower_presence and followee_presence):
+                feat_tag = ('mismatched_followee_presents_cat=%s' % identity_category)
+                features[feat_tag] += incr
+                feat_tag = ('xor_cat=%s' % identity_category)
+                features[feat_tag] += incr
+                num_mismatched_followee_presents += 1
+                
+        # Number of matches
+        if len(categories) > 1:
+            features['num_matches'] += num_matches * incr
+            features['num_mismatched_follower_presents'] += num_mismatched_follower_presents * incr
+            features['num_mismatched_followee_presents'] += num_mismatched_followee_presents * incr
+    
+            
+    # Candidate comparison space
+    if label == 1:
+        _extract_features_experiment_1_candidate(nonreblog_candidate, incr=-1)
+        _extract_features_experiment_1_candidate(reblog_candidate, incr=1)
+    else:
+        _extract_features_experiment_1_candidate(reblog_candidate, incr=-1)
+        _extract_features_experiment_1_candidate(nonreblog_candidate, incr=1)
+
+    return features
+
+                
+def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
+    # ### Experiment 2 - Compatibility
+    features = defaultdict(float)
+
+    category_vocabs = extras[1]
+
+    def _extract_features_experiment_2_candidate(candidate, incr):
+        # Comparison space features
+        for identity_category in categories:
+            identity_category_follower = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_follower'])]
+            identity_category_followee = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_followee'])]
+
+            for identity_label_followee in identity_category_followee:
+                if identity_label_followee in category_vocabs[identity_category]:
+                    for identity_label_follower in identity_category_follower:
+
+                        # Interaction features
+                        if identity_label_follower in category_vocabs[identity_category]:
+                            feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
+                                                                                    identity_label_follower,
+                                                                                    identity_label_followee))
+                            features[feat_tag] += incr
+
+                        # Group features
+                        groupmap = get_groups() 
+
+    # Candidate comparison space
+    if label == 1:
+        _extract_features_experiment_2_candidate(nonreblog_candidate, incr=-1)
+        _extract_features_experiment_2_candidate(reblog_candidate, incr=1)
+    else:
+        _extract_features_experiment_2_candidate(reblog_candidate, incr=-1)
+        _extract_features_experiment_2_candidate(nonreblog_candidate, incr=1)
+
+    return features
+
+
+def load_data(features_dir, filenames, fpath=None):
+
+    # if fpath exists, will load from there
+    if fpath is not None and os.path.exists(fpath):
+        with open(fpath, 'rb') as f:
+            instances, instance_labels = pickle.load(f)
+
+    else:
+        joined_filenames = [os.path.join(features_dir, filename) for filename in filenames]
+        csv_readers = [csv.DictReader(x.replace('\0', '') for x in open(filename, 'r')) for filename in joined_filenames]
+
+        instances = []
+        instance_labels = []
+        for row in zip(*csv_readers):
+            reblog_features = row[0]
+            nonreblog_features = row[1]
+            label = int(row[2]['ranking_label'])
+            instance = (reblog_features, nonreblog_features) # reblog always first, nonreblog always second
+            instances.append(instance)
+            instance_labels.append(label)
+        
+        # Save out
+        with open(fpath, 'wb') as f:
+            pickle.dump((instances, instance_labels), f)
+        
+    return instances, instance_labels
+
+
+def get_tag_vocab(instances, fpath):
+
+    if os.path.exists(fpath):
+        with open(fpath, 'rb') as f:
+            tag_vocab = pickle.load(f)
+
+    else:
+        counted_ids = defaultdict(lambda: set()) # for each tag, a set of followees who used those tags
+        tag_counts = defaultdict(int) # count of unique followees who used each tag
+        for reblog_candidate, nonreblog_candidate in instances:
+            update_tag_counts(tag_counts, counted_ids, reblog_candidate)
+            update_tag_counts(tag_counts, counted_ids, nonreblog_candidate)
+
+        tag_counts_filtered = {k:v for k,v in tag_counts.items() if v > 1} # at least 2 users used the tag
+        tag_vocab = tag_counts_filtered.keys()
+
+        with open(fpath, 'wb') as f:
+            pickle.dump(set(tag_vocab), f)
+
+    return tag_vocab
+
+
+def get_category_vocabs(instances, categories, fpath):
+
+    if os.path.exists(fpath):
+        with open(fpath, 'rb') as f:
+            category_vocabs = pickle.load(f)
+
+    else:
+        # ### Count category label instances
+        category_label_counts = defaultdict(lambda: defaultdict(int)) # {category: {value: count_of_unique_users}}
+        # counted_ids = set()
+        for category in categories:
+            counted_ids = set() # for each category, ids already considered
+            for reblog_candidate, nonreblog_candidate in instances:
+                category_followee = category + '_terms_followee'
+                followee_id = reblog_candidate['tumblog_id_followee']
+                if not followee_id in counted_ids: # only counts labels from first instance seen of a followee, since constant
+                    category_value = [x.lower() for x in eval(reblog_candidate[category_followee])]
+                    for value in category_value:
+                        category_label_counts[category][value] += 1
+                    counted_ids.add(followee_id)
+                    
+                followee_id = nonreblog_candidate['tumblog_id_followee']
+                if not followee_id in counted_ids:
+                    category_value = [x.lower() for x in eval(nonreblog_candidate[category_followee])]
+                    for value in category_value:
+                        category_label_counts[category][value] += 1
+                    counted_ids.add(followee_id)
+                
+                category_follower = category + '_terms_follower'
+                follower_id = reblog_candidate['tumblog_id_follower']
+                if not follower_id in counted_ids:
+                    category_value = [x.lower() for x in eval(reblog_candidate[category_follower])]
+                    for value in category_value:
+                        category_label_counts[category][value] += 1
+                    counted_ids.add(follower_id)
+
+        # Make category vocab
+        category_vocabs = defaultdict(lambda: set())
+        for identity_category in category_label_counts:
+            category_labels_filtered_vocab = set([k for k,v in category_label_counts[identity_category].items() if v > 1]) # min 2 users using label
+            category_vocabs[identity_category] = category_labels_filtered_vocab
+
+        with open(fpath, 'wb') as f:
+            pickle.dump(dict(category_vocabs), f)
+
+    return category_vocabs
+
+def get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000):
+    feats_index2name = {v: k for k, v in features_vectorizer.vocabulary_.items()}
+    feature_weights = model.coef_[0]
+    
+    top_indices = np.argsort(feature_weights)[-1*n:]
+    top_weights = np.sort(feature_weights)[-1*n:]
+    bottom_indices = np.argsort(feature_weights)[:n]
+    bottom_weights = np.sort(feature_weights)[:n]
+    #tb_weights = sorted(np.hstack([top_weights, bottom_weights], key=lambda row: np.abs(row)))
+    
+#     bottom_feats = set(feats_index2name[j] for j in bottom_indices)
+#     top_feats = set(feats_index2name[j] for j in bottom_indices)
+
+    nontag_lines = [] # to sort and print
+    lines = [] # to sort and print
+    
+    for i, (j, w) in enumerate(zip(reversed(top_indices), reversed(top_weights))):
+        feature_name = feats_index2name[j]
+        if not feature_name.startswith('tag'):
+            nontag_lines.append([i, feature_name, w, abs(w)])
+#             print(f"{i}\t{feature_name}\t{w: .3f}")
+        lines.append([i, feature_name, w, abs(w)])
+            
+    for i, (j, w) in enumerate(zip(bottom_indices, bottom_weights)):
+        feature_name = feats_index2name[j]
+        if not feature_name.startswith('tag'):
+            nontag_lines.append([i, feature_name, w, abs(w)])
+        lines.append([i, feature_name, w, abs(w)])
+
+    nontag_lines = list(reversed(sorted(nontag_lines, key=itemgetter(3))))
+    lines = list(reversed(sorted(lines, key=itemgetter(3))))
+
+    # Save out
+    outpath = os.path.join(data_dirpath, 'output', 'informative_features', f'{model_name.replace("/", "_").replace(" ", "_")}_informative_features_nontag.txt')
+    with open(outpath, 'w') as f:
+        for l in nontag_lines:
+            f.write(f'{l}\n')
+
+    outpath = os.path.join(data_dirpath, 'output', 'informative_features', f'{model_name.replace("/", "_").replace(" ", "_")}_informative_features.txt')
+    with open(outpath, 'w') as f:
+        for l in lines:
+            f.write(f'{l}\n')
+
+
+def extract_features(feature_sets, instances, instance_labels, identity_categories, remove_zeros=False, initialization=None, categories=['all'], model_name=None, data_dirpath=None, extras=[]):
+    """ Args:
+            remove_zeros: whether or not to remove instances where the follower and all of their followees do not give the category
+    """
+    feature_set_extractors = {
+        'post_baseline': extract_features_post_baseline,
+        'experiment1': extract_features_experiment_1,
+        'experiment2': extract_features_experiment_2,
+    }
+
+    X = []
+    y = []
+
+    if categories == ['all']:
+        categories = identity_categories
+
+    if remove_zeros:
+        # Build hashmap of followers that have zero presence of the category and all their followees do, too, for each category
+        category_user_remove = variance_analysis(instances, identity_categories)
+        remove_ids = set.intersection(*[set(category_user_remove[c]) for c in categories])
+
+    def _extract_features(feature_sets, reblog_candidate, nonreblog_candidate, label, initial_features={}, categories=categories, extras=extras):
+        instance_features = initial_features
+
+        for feature_set in feature_sets:
+            instance_features.update(feature_set_extractors[feature_set](reblog_candidate, nonreblog_candidate, label, categories=categories, extras=extras))
+    
+        return instance_features
+
+    if initialization:
+        initial_features = initialization
+    else:
+        initial_features = [{} for _ in range(len(instances))]
+
+    keep_indices = []
+
+    for i, ((reblog_candidate, nonreblog_candidate), label, initial) in enumerate(zip(instances, instance_labels, initial_features)):
+
+        if remove_zeros:
+            follower_id = reblog_candidate['tumblog_id_follower']
+            if not follower_id in remove_ids:
+                X.append(_extract_features(feature_sets, reblog_candidate, nonreblog_candidate, label, initial_features=initial, categories=categories, extras=extras))
+                y.append(label)
+                keep_indices(i)
+
+        else:
+            X.append(_extract_features(feature_sets, reblog_candidate, nonreblog_candidate, label, initial_features=initial, categories=categories, extras=extras))
+            y.append(label)
+        
+    features_vectorizer = feature_extraction.DictVectorizer()
+    features_scaler = preprocessing.StandardScaler(with_mean=False) # normalization standard scaler
+    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.1, random_state=12345)
+
+    X_train = features_vectorizer.fit_transform(X_train)
+    X_train = features_scaler.fit_transform(X_train)
+    X_test = features_vectorizer.transform(X_test)
+    X_test = features_scaler.transform(X_test)
+
+    # Save feature vectorizer for error analysis
+    if data_dirpath and model_name:
+        outpath = os.path.join(data_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
+        with open(outpath, 'wb') as f:
+            pickle.dump(features_vectorizer, f)
+
+    # Save row indices of instances kept
+    if data_dirpath and model_name:
+        outpath = os.path.join(data_dirpath, 'output', f'{model_name.replace("/", "_").replace(" ", "_")}_instances_kept.txt')
+        with open(outpath, 'w') as f:
+            for i in keep_indices:
+                f.write(f"{i}\n")
+    
+
+    return X_train, y_train, X_test, y_test, X, features_vectorizer
+
+
+def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
+
+    model = clf.fit(X_train, y_train)
+    score = model.score(X_test, y_test)
+    train_pred = model.predict(X_train)
+    model_pred = model.predict(X_test)
+
+    # Save predictions
+    np.savetxt(os.path.join(data_dirpath, 'output', 'predictions', f'{model_name.replace("/", "_").replace(" ", "_")}_test_preds.txt'), model_pred)
+    np.savetxt(os.path.join(data_dirpath, 'output', 'predictions', f'{model_name.replace("/", "_").replace(" ", "_")}_train_preds.txt'), train_pred)
+
+    # Save classifier (with weights)
+    with open(os.path.join(data_dirpath, 'models', f'{model_name.replace("/", "_").replace(" ", "_")}.pkl'), 'wb') as f:
+        pickle.dump(model, f)
+
+    return model, score, model_pred
+
 
 def main():
+
+    parser = argparse.ArgumentParser(description='Extract features and run models')
+    parser.add_argument('--remove-zeros', dest='remove_zeros', action='store_true')
+    parser.set_defaults(remove_zeros=False)
+    args = parser.parse_args()
 
     data_dirpath = '/usr2/mamille2/tumblr/data/sample1k'
 
     feature_tables_dir = os.path.join(data_dirpath, 'feature_tables')
     filenames = ['reblog_features.csv', 'nonreblog_features.csv', 'ranking_labels.csv']
-    joined_filenames = [os.path.join(feature_tables_dir, filename) for filename in filenames]
-    csv_readers = [csv.DictReader(x.replace('\0', '') for x in open(filename, 'r')) for filename in joined_filenames]
 
     # Read in data
-    instances = []
-    instance_labels = []
-    for row in zip(*csv_readers):
-        reblog_features = row[0]
-        nonreblog_features = row[1]
-        label = int(row[2]['ranking_label'])
-        instance = (reblog_features, nonreblog_features) # reblog always first, nonreblog always second
-        instances.append(instance)
-        instance_labels.append(label)
-        
+    print("Loading data...")
+
+    instances, instance_labels = load_data(feature_tables_dir, filenames, os.path.join(data_dirpath, 'processed_data', 'instances.pkl'))
     print(len(instances), len(instance_labels))
 
-
-    # # Feature Extraction
-
     # ### Create tag vocabulary
-    counted_ids = defaultdict(lambda: set()) # for each tag, a set of followees who used those tags
-    tag_counts = defaultdict(int) # count of unique followees who used each tag
-    for reblog_candidate, nonreblog_candidate in instances:
-        update_tag_counts(tag_counts, counted_ids, reblog_candidate)
-        update_tag_counts(tag_counts, counted_ids, nonreblog_candidate)
-
-    tag_counts_filtered = {k:v for k,v in tag_counts.items() if v > 1} # at least 2 users used the tag
-    tag_vocab = tag_counts_filtered.keys()
-    print(len(tag_vocab))
+    tag_vocab = get_tag_vocab(instances, os.path.join(data_dirpath, 'processed_data', 'tag_vocab.pkl'))
+    print(f'Size of tag vocab: {len(tag_vocab)}')
+    print()
 
     identity_categories = ['age', 'ethnicity/nationality', 'fandoms', 'gender',
                            'interests', 'location', 'personality type', 'pronouns', 'relationship status', 'roleplay',
                            'sexual orientation', 'weight', 'zodiac']
-    len(identity_categories)
-
-
-    # ### Count category label instances
-    category_label_counts = defaultdict(lambda: defaultdict(int)) # {category: {value: count_of_unique_users}}
-    # counted_ids = set()
-    for category in identity_categories:
-        counted_ids = set() # for each category, ids already considered
-        for reblog_candidate, nonreblog_candidate in instances:
-            category_followee = category + '_terms_followee'
-            followee_id = reblog_candidate['tumblog_id_followee']
-            if not followee_id in counted_ids: # only counts labels from first instance seen of a followee, since constant
-                category_value = [x.lower() for x in eval(reblog_candidate[category_followee])]
-                for value in category_value:
-                    category_label_counts[category][value] += 1
-                counted_ids.add(followee_id)
-                
-            followee_id = nonreblog_candidate['tumblog_id_followee']
-            if not followee_id in counted_ids:
-                category_value = [x.lower() for x in eval(nonreblog_candidate[category_followee])]
-                for value in category_value:
-                    category_label_counts[category][value] += 1
-                counted_ids.add(followee_id)
-            
-            category_follower = category + '_terms_follower'
-            follower_id = reblog_candidate['tumblog_id_follower']
-            if not follower_id in counted_ids:
-                category_value = [x.lower() for x in eval(reblog_candidate[category_follower])]
-                for value in category_value:
-                    category_label_counts[category][value] += 1
-                counted_ids.add(follower_id)
-
 
     # ### Create category label vocabulary
-    category_vocabs = defaultdict(lambda: set())
-    for identity_category in category_label_counts:
-        category_labels_filtered_vocab = set([k for k,v in category_label_counts[identity_category].items() if v > 1]) # min 2 users using label
-        category_vocabs[identity_category] = category_labels_filtered_vocab
-        #print(identity_category, len(category_vocabs[identity_category]))
-        #print(category_vocabs[identity_category])
-        #print('-----------------')
-        #print()
-        
-    # ### Experiment 1 - Identity framing, presence of variables
-
-    # In[8]:
-
-
-    def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label):
-        # Baseline features
-    #     features = defaultdict(float)
-        features = extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label)
-        
-        # Follower features
-    #     for identity_category in identity_categories:
-    #         identity_category_follower = eval(reblog_candidate[identity_category + '_terms_follower'])
-    #         follower_presence = len(identity_category_follower) > 0
-    #         if follower_presence:
-    #             feat_tag = ('follower_cat=%s' % identity_category)
-    #             features[feat_tag] += 1
-                
-        # Follower-followee comparison space features
-        def _extract_features_experiment_1_candidate(candidate, incr):
-            
-            num_matches = 0
-            num_mismatched_follower_presents = 0
-            num_mismatched_followee_presents = 0
-            
-            for identity_category in identity_categories:
-                identity_category_follower = eval(reblog_candidate[identity_category + '_terms_follower'])
-                follower_presence = len(identity_category_follower) > 0
-                identity_category_followee = eval(candidate[identity_category + '_terms_followee'])
-                followee_presence = len(identity_category_followee) > 0
-    #             if followee_presence:
-    #                 feat_tag = ('followee_cat=%s' % identity_category)
-    #                 features[feat_tag] += incr
-
-                # Alignment features
-    #             if ((follower_presence and followee_presence) or
-    #                 (not follower_presence and not followee_presence)):
-                # AND
-                if (follower_presence and followee_presence): # AND
-                    feat_tag = ('aligned_cat=%s' % identity_category)
-                    features[feat_tag] += incr
-                    num_matches += 1
-                    
-                # XOR
-                if (follower_presence and not followee_presence): # XOR
-                    feat_tag = ('xor_cat=%s' % identity_category)
-                    features[feat_tag] += incr
-                    num_mismatched_follower_presents += 1
-                elif (not follower_presence and followee_presence): # XOR
-                    feat_tag = ('xor_cat=%s' % identity_category)
-                    features[feat_tag] += incr
-                    num_mismatched_followee_presents += 1
-                    
-            # Number of matches
-            features['num_matches'] += num_matches * incr
-            features['num_mismatched_follower_presents'] += num_mismatched_follower_presents * incr
-            features['num_mismatched_followee_presents'] += num_mismatched_followee_presents * incr
-                
-        if label == 1:
-            _extract_features_experiment_1_candidate(nonreblog_candidate, incr=-1)
-            _extract_features_experiment_1_candidate(reblog_candidate, incr=1)
-        else:
-            _extract_features_experiment_1_candidate(reblog_candidate, incr=-1)
-            _extract_features_experiment_1_candidate(nonreblog_candidate, incr=1)
-
-        return features
-
-
-    # ### Experiment 2 - Compatibility
-
-    # In[15]:
-
-
-    def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label):
-        # Baseline features
-    #     features = defaultdict(float)
-    #     features = extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label)
-        features = extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label)
-
-        
-        # Follower features
-        for identity_category in identity_categories:
-            identity_category_follower = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_follower'])]
-            for identity_label in identity_category_follower:
-                if identity_label in category_vocabs[identity_category]:
-                    feat_tag = ('cat=%s,follower_lab=%s' % (identity_category, identity_label))
-                    features[feat_tag] += 1
-                
-        # Comparison space features
-        def _extract_features_experiment_2_candidate(candidate, incr):
-            for identity_category in identity_categories:
-                identity_category_follower = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_follower'])]
-                identity_category_followee = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_followee'])]
-                for identity_label_followee in identity_category_followee:
-                    if identity_label_followee in category_vocabs[identity_category]:
-                        feat_tag = ('cat=%s,followee_lab=%s' % (identity_category, identity_label_followee))
-                        features[feat_tag] += incr
-                        
-                        # Compatibility features: explicit marking of follower and followee labels together
-                        for identity_label_follower in identity_category_follower:
-                            if identity_label_follower in category_vocabs[identity_category]:
-                                feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
-                                                                                        identity_label_follower,
-                                                                                        identity_label_followee))
-                                features[feat_tag] += incr
-                
-                    
-        if label == 1:
-            _extract_features_experiment_2_candidate(nonreblog_candidate, incr=-1)
-            _extract_features_experiment_2_candidate(reblog_candidate, incr=1)
-        else:
-            _extract_features_experiment_2_candidate(reblog_candidate, incr=-1)
-            _extract_features_experiment_2_candidate(nonreblog_candidate, incr=1)
-
-        return features
-
-
-    # # Run models
-
-    # In[9]:
-
-
-    from sklearn import feature_extraction
-    from sklearn import linear_model
-    from sklearn import model_selection
-    from sklearn import preprocessing
-    from sklearn import svm
-    import numpy as np
-
-
+    category_vocabs = get_category_vocabs(instances, identity_categories, os.path.join(data_dirpath, 'processed_data', 'category_vocab.pkl'))
+    
     # ### Post baseline
+    print("Extracting post baseline features...")
+    X_train, y_train, X_test, y_test, baseline_X, _ = extract_features(['post_baseline'], instances, instance_labels, identity_categories, extras=[tag_vocab])
+    #clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
 
-    # In[23]:
+#    print("Running post baseline...")
+#    score, baseline_preds = run_model('lr_baseline', clf, X_train, y_train, X_test, y_test, data_dirpath)
+#    print(f'\tBaseline score: {score: .4f}')
 
+    # Load baseline predictions
+    baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'lr_baseline.txt'))
 
-    X = []
-    y = []
-    for (reblog_candidate, nonreblog_candidate), label in zip(instances, instance_labels):
-        X.append(extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label))
-        y.append(label)
-        
-    post_features_vectorizer = feature_extraction.DictVectorizer()
-    post_features_scaler = preprocessing.StandardScaler(with_mean=False) # normalization standard scaler
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.2, random_state=12345)
-    X_train = post_features_vectorizer.fit_transform(X_train)
-    X_train = post_features_scaler.fit_transform(X_train)
-    X_test = post_features_vectorizer.transform(X_test)
-    X_test = post_features_scaler.transform(X_test)
+    print()
+    print("Running experiment 2...")
 
-    baseline_model = linear_model.LogisticRegressionCV(cv=10).fit(X_train, y_train) # default 5 folds
-    print(baseline_model.score(X_test, y_test))
-    baseline_pred = baseline_model.predict(X_test)
+    for category in tqdm(['all'] + identity_categories, ncols=50):
+        model_name = f'lr_baseline+exp1+exp2_{category}'
+        if args.remove_zeros: model_name = model_name + '_filtered'
 
 
-    # ### Experiment 1 - Identity framing, presence of variables
+        # Baseline (only need for filtered)
+        #tqdm.write(f"\n{category} baseline")
+        #X_train, y_train, X_test, y_test, baseline_X, _ = extract_features(['post_baseline'], instances, instance_labels, identity_categories, remove_zeros=args.remove_zeros, categories=[category], model_name=f'lr_baseline_{category}', data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
+        #tqdm.write(f"Number of instances: {len(baseline_X)}")
+        #clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
+        #_, score, baseline_preds = run_model(f'lr_baseline_{category}', clf, X_train, y_train, X_test, y_test, data_dirpath)
+        #tqdm.write(f'\t{category} baseline score: {score: .4f}')
 
-    # In[ ]:
+        # Experiment 1
+        #tqdm.write(f"\n{category} experiment 1")
+        #X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(['post_baseline', 'experiment1'], instances, instance_labels, identity_categories, initialization=None, remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
+        #tqdm.write(f"Number of instances: {len(X)}")
 
+        # Experiment 2
+        tqdm.write(f"\n{category} experiment 2")
+        X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(['experiment1', 'experiment2'], instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
+        #tqdm.write(f"Number of instances: {len(X)}")
 
-    X = []
-    y = []
-    for (reblog_candidate, nonreblog_candidate), label in zip(instances, instance_labels):
-        X.append(extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label))
-        y.append(label)
-        
-    features_vectorizer_experiment_1 = feature_extraction.DictVectorizer()
-    features_scaler_experiment_1 = preprocessing.StandardScaler(with_mean=False)
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.2, random_state=12345)
-    X_train = features_vectorizer_experiment_1.fit_transform(X_train)
-    X_train = features_scaler_experiment_1.fit_transform(X_train)
-    X_test = features_vectorizer_experiment_1.transform(X_test)
-    X_test = features_scaler_experiment_1.transform(X_test)
-
-    experiment_1_model = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2).fit(X_train, y_train)
-    print(experiment_1_model.score(X_test, y_test))
-    experiment_1_pred = experiment_1_model.predict(X_test)
-
-    # Save predictions
-    np.savetxt(os.path.join(data_dirpath, 'results', 'baseline_exp1.txt'), experiment_1_pred)
-
-    # Save classifier (with weights)
-    with open(os.path.join(data_dirpath, 'models', 'lr_baseline_exp1.pkl'), 'wb') as f:
-        pickle.dump(experiment_1_model)
+        clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
+        model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
+        print(f'\t{category} {model_name} score: {score: .4f}')
 
 
-    # ### Experiment 2 - Compatibility
+        # Significance test
+        test_result = run_mcnemar(baseline_preds, preds, y_test)
+        tqdm.write(f"McNemar's p-value: {test_result.pvalue: .6f}")
 
-    # In[18]:
+        # Save informative features
+        get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
-
-    X = []
-    y = []
-    for (reblog_candidate, nonreblog_candidate), label in zip(instances, instance_labels):
-        X.append(extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label))
-        y.append(label)
-        
-    features_vectorizer_experiment_2 = feature_extraction.DictVectorizer()
-    features_scaler_experiment_2 = preprocessing.StandardScaler(with_mean=False)
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.2, random_state=12345)
-    X_train = features_vectorizer_experiment_2.fit_transform(X_train)
-    X_train = features_scaler_experiment_2.fit_transform(X_train)
-    X_test = features_vectorizer_experiment_2.transform(X_test)
-    X_test = features_scaler_experiment_2.transform(X_test)
-
-    experiment_2_model = linear_model.LogisticRegressionCV(cv=10, max_iter=1000, n_jobs=5, verbose=2).fit(X_train, y_train)
-    print(experiment_2_model.score(X_test, y_test))
-    experiment_2_pred = experiment_2_model.predict(X_test)
-
-    # Save predictions
-    np.savetxt(os.path.join(data_dirpath, 'results', 'baseline_exp1_exp2.txt'), experiment_2_pred)
-
-
-    # # McNemar's Test (Significance)
-
-    # In[ ]:
-
-
-    a = 0
-    b = 0 # Baseline correct, experiment incorrect
-    c = 0 # Baseline incorrect, experiment correct
-    d = 0
-    for b_pred, ex_pred, true in zip(baseline_pred, experiment_1_pred, y_test):
-        if b_pred == true and ex_pred == true:
-            a += 1
-        elif b_pred == true and ex_pred != true:
-            b += 1
-        elif b_pred != true and ex_pred == true:
-            c += 1
-        else:
-            d += 1
-            
-    table = [[a, b],
-             [c, d]]
-    print(table)
-
-
-    # In[ ]:
-
-
-    # Example of calculating the mcnemar test
-    from statsmodels.stats.contingency_tables import mcnemar
-    # calculate mcnemar test
-    result = mcnemar(table, exact=False, correction=False)
-    # summarize the finding
-    print('statistic=%.3f, p-value=%.3f' % (result.statistic, result.pvalue))
-    # interpret the p-value
-    alpha = 0.05
-    if result.pvalue > alpha:
-            print('Same proportions of errors (fail to reject H0)')
-    else:
-            print('Different proportions of errors (reject H0)')
 
 if __name__ == '__main__':
     main()
