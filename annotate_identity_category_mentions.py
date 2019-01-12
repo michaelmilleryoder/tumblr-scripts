@@ -109,7 +109,6 @@ class IdentityAnnotator():
                         [r'latino', r'latina', r'cubana', r'cubano', r'chilena', r'chileno', r'mexicano', r'mexicana', r'filipina', r'afrolatin',
                         r'palestinian',
                         r'spaniard',
-                        r'colored',
                         r'welshie',
                         r'swede',
                         r'scandinavian',
