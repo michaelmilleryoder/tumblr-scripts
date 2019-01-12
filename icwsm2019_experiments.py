@@ -561,7 +561,7 @@ def main():
     # Classifier definitions
     classifiers = {
         'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2),
-        'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=1), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=1),
+        'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=0), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=2),
         'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True, verbose=2)
     }
     
@@ -576,7 +576,7 @@ def main():
 
         print("Running post baseline...")
         model_name = f'{args.classifier_type}_baseline'
-        score, baseline_preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
+        model, score, baseline_preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
         print(f'\tBaseline score: {score: .4f}')
 
         # Save informative features
