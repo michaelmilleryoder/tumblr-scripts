@@ -119,62 +119,6 @@ def update_tag_counts(tag_counts, counted_ids, candidate): # for hashtags
             counted_ids[tag].add(followee_id)
 
 
-#def get_themes():
-#    """ Grouped features for experiment 2 """
-#
-#    themes_fpath = os.path.join(data_dirpath, 'theme_dict.pkl')
-#    
-#    with open(themes_fpath, 'rb') as f:
-#        themes = pickle.load(f)
-#
-#
-#    #themes = {
-#    #
-#    #    'age': {'sixteen': [16],
-#    #            'twenty': [20],
-#    #            }, # words to numbers
-#    #            # TODO: add early 20s, late 20s, teens bins, difference feature
-#    #    'gender': {'guy': ['M'],
-#    #            'man': ['M'],
-#    #            'male': ['M'],
-#    #            'brother': ['M'],
-#    #            'girl': ['F'],
-#    #            'woman': ['F'],
-#    #            'wife': ['F'],
-#    #            'female': ['F'],
-#    #            'mom': ['F'],
-#    #            'princess': ['F'],
-#    #            },
-#    #    'location': {'u.k': ['uk'],
-#    #            },
-#    #    'relationship status': {'single': ['single'],
-#    #                            'couple': ['attached'],
-#    #                            'taken': ['attached'],
-#    #                            'husband': ['attached'],
-#    #                            'wife': ['attached'],
-#    #                            'in a relationship': ['attached'],
-#    #                            'married': ['attached'],
-#    #                            'engaged': ['attached'],
-#    #            },
-#    #    'sexual orientation': {'bisexual': ['queer'],
-#    #                            'bi': ['bisexual', 'queer'],
-#    #                            'ace': ['asexual', 'queer'],
-#    #                            'asexual': ['queer'],
-#    #                            'pansexual': ['queer'],
-#    #                            'lesbian': ['queer'],
-#    #                            'gay': ['queer'],
-#    #                            'lgbt': ['queer'],
-#    #                            'queer': ['queer'],
-#    #                            'homo': ['queer'],
-#    #                            'wlw': ['lesbian', 'queer'],
-#    #                            'straight': ['straight'],
-#    #            },
-#
-#    #}   
-#
-#    return themes
-
-
 def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
     ### Post baseline
     features = defaultdict(float) # {feat: count} for each instance
@@ -583,13 +527,14 @@ def main():
     parser.add_argument('--experiment2', dest='experiment2', action='store_true')
     parser.add_argument('--baseline', dest='baseline', action='store_true')
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
+    parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='', default='/usr2/mamille2/tumblr/data/sample1k')
     parser.set_defaults(remove_zeros=False)
     parser.set_defaults(experiment1=False)
     parser.set_defaults(experiment2=False)
     parser.set_defaults(baseline=False)
     args = parser.parse_args()
 
-    data_dirpath = '/usr2/mamille2/tumblr/data/sample1k'
+    data_dirpath = args.data_dirpath # /usr0/home/mamille2/erebor/tumblr/data/sample1k for misty
 
     feature_tables_dir = os.path.join(data_dirpath, 'feature_tables')
     filenames = ['reblog_features.csv', 'nonreblog_features.csv', 'ranking_labels.csv']
@@ -616,14 +561,15 @@ def main():
     # Classifier definitions
     classifiers = {
         'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2),
-        'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=2), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=2),
-        'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True)
+        'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=1), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=1),
+        'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True, verbose=2)
     }
     
     # ### Post baseline
     print("Extracting post baseline features...")
     X_train, y_train, X_test, y_test, baseline_X, features_vectorizer = extract_features(['post_baseline'], instances, instance_labels, identity_categories, extras=[tag_vocab])
 
+    # Run baseline
     if args.baseline:
 
         clf = classifiers[args.classifier_type]
@@ -636,6 +582,7 @@ def main():
         # Save informative features
         get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
+    # Run experiments
     else:
         # Load baseline predictions
         baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'{args.classifier_type}_baseline.txt'))
@@ -664,7 +611,7 @@ def main():
 
             tqdm.write(f"\n{category} {' '.join(experiments)}")
 
-            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=True, extras=[tag_vocab, category_vocabs, themes])
+            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=False, extras=[tag_vocab, category_vocabs, themes])
             tqdm.write(f"Number of instances: {len(X)}")
 
             clf = classifiers[args.classifier_type]
