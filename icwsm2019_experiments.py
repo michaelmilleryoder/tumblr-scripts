@@ -4,6 +4,7 @@ import codecs
 from collections import defaultdict
 from sklearn import feature_extraction
 from sklearn import linear_model
+from sklearn import neural_network
 from sklearn import model_selection
 from sklearn import preprocessing
 from sklearn import svm
@@ -16,6 +17,7 @@ import argparse
 import copy
 from operator import itemgetter
 
+from get_themes import get_themes
 
 def variance_analysis(instances, identity_categories):
     """ Returns: category_user_remove, a hashmap of a set of users who have zero presence of the category and all their followees also have zero presence of the category """
@@ -117,52 +119,60 @@ def update_tag_counts(tag_counts, counted_ids, candidate): # for hashtags
             counted_ids[tag].add(followee_id)
 
 
-def get_groups():
-    """ Grouped features for experiment 2 """
-    groups = {
-    
-        'age': {'sixteen': [16],
-                'twenty': [20],
-                }, # words to numbers
-        'gender': {'guy': ['M'],
-                'man': ['M'],
-                'male': ['M'],
-                'brother': ['M'],
-                'girl': ['F'],
-                'woman': ['F'],
-                'wife': ['F'],
-                'female': ['F'],
-                'mom': ['F'],
-                'princess': ['F'],
-                },
-        'location': {'u.k': ['uk'],
-                }
-        'relationship status': {'single': ['single'],
-                                'couple': ['attached'],
-                                'taken': ['attached'],
-                                'husband': ['attached'],
-                                'wife': ['attached'],
-                                'in a relationship': ['attached'],
-                                'married': ['attached'],
-                                'engaged': ['attached'],
-                },
-        'sexual orientation': {'bisexual': ['queer'],
-                                'bi': ['bisexual', 'queer']
-                                'ace': ['asexual', 'queer'],
-                                'asexual': ['queer'],
-                                'pansexual': ['queer'],
-                                'lesbian': ['queer'],
-                                'gay': ['queer'],
-                                'lgbt': ['queer'],
-                                'queer': ['queer'],
-                                'homo': ['queer'],
-                                'wlw': ['lesbian', 'queer']
-                                'straight': ['straight'],
-                },
-
-    }   
-
-    return groups
+#def get_themes():
+#    """ Grouped features for experiment 2 """
+#
+#    themes_fpath = os.path.join(data_dirpath, 'theme_dict.pkl')
+#    
+#    with open(themes_fpath, 'rb') as f:
+#        themes = pickle.load(f)
+#
+#
+#    #themes = {
+#    #
+#    #    'age': {'sixteen': [16],
+#    #            'twenty': [20],
+#    #            }, # words to numbers
+#    #            # TODO: add early 20s, late 20s, teens bins, difference feature
+#    #    'gender': {'guy': ['M'],
+#    #            'man': ['M'],
+#    #            'male': ['M'],
+#    #            'brother': ['M'],
+#    #            'girl': ['F'],
+#    #            'woman': ['F'],
+#    #            'wife': ['F'],
+#    #            'female': ['F'],
+#    #            'mom': ['F'],
+#    #            'princess': ['F'],
+#    #            },
+#    #    'location': {'u.k': ['uk'],
+#    #            },
+#    #    'relationship status': {'single': ['single'],
+#    #                            'couple': ['attached'],
+#    #                            'taken': ['attached'],
+#    #                            'husband': ['attached'],
+#    #                            'wife': ['attached'],
+#    #                            'in a relationship': ['attached'],
+#    #                            'married': ['attached'],
+#    #                            'engaged': ['attached'],
+#    #            },
+#    #    'sexual orientation': {'bisexual': ['queer'],
+#    #                            'bi': ['bisexual', 'queer'],
+#    #                            'ace': ['asexual', 'queer'],
+#    #                            'asexual': ['queer'],
+#    #                            'pansexual': ['queer'],
+#    #                            'lesbian': ['queer'],
+#    #                            'gay': ['queer'],
+#    #                            'lgbt': ['queer'],
+#    #                            'queer': ['queer'],
+#    #                            'homo': ['queer'],
+#    #                            'wlw': ['lesbian', 'queer'],
+#    #                            'straight': ['straight'],
+#    #            },
+#
+#    #}   
+#
+#    return themes
 
 
 def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
@@ -211,7 +221,7 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
         num_mismatched_followee_presents = 0
         
         for identity_category in categories:
-            identity_category_follower = eval(reblog_candidate[identity_category + '_terms_follower'])
+            identity_category_follower = eval(candidate[identity_category + '_terms_follower'])
             follower_presence = len(identity_category_follower) > 0
             identity_category_followee = eval(candidate[identity_category + '_terms_followee'])
             followee_presence = len(identity_category_followee) > 0
@@ -261,30 +271,57 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
 
                 
 def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
-    # ### Experiment 2 - Compatibility
     features = defaultdict(float)
 
     category_vocabs = extras[1]
+    themes = extras[2]
 
     def _extract_features_experiment_2_candidate(candidate, incr):
+
         # Comparison space features
         for identity_category in categories:
-            identity_category_follower = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_follower'])]
-            identity_category_followee = [x.lower() for x in eval(reblog_candidate[identity_category + '_terms_followee'])]
+            identity_category_follower = [x.lower() for x in eval(candidate[identity_category + '_terms_follower'])]
+            identity_category_followee = [x.lower() for x in eval(candidate[identity_category + '_terms_followee'])]
+
+            if len(identity_category_follower) == 0 and len(identity_category_followee) == 0:
+                identity_category_followee = []
+                identity_category_follower = []
+            else:
+                if len(identity_category_followee) == 0:
+                    identity_category_followee = ['empty']
+                if len(identity_category_follower) == 0:
+                    identity_category_follower = ['empty']
 
             for identity_label_followee in identity_category_followee:
-                if identity_label_followee in category_vocabs[identity_category]:
+                if identity_label_followee == 'empty' or identity_label_followee in category_vocabs[identity_category]:
+                    followee_themes = themes[identity_category][identity_label_followee]
+
                     for identity_label_follower in identity_category_follower:
 
-                        # Interaction features
-                        if identity_label_follower in category_vocabs[identity_category]:
-                            feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
-                                                                                    identity_label_follower,
-                                                                                    identity_label_followee))
-                            features[feat_tag] += incr
+                        if identity_label_follower == 'empty' or identity_label_follower in category_vocabs[identity_category]:
+                            follower_themes = themes[identity_category][identity_label_follower]                            
+                            # Label interaction features
+                            #feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
+                            #                                                        identity_label_follower,
+                            #                                                        identity_label_followee))
+                            #features[feat_tag] += incr
 
-                        # Group features
-                        groupmap = get_groups() 
+                            for follower_theme in follower_themes:
+                                for followee_theme in followee_themes:
+
+                                    # Theme interaction features
+                                    feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
+                                    features[feat_tag] += incr
+
+                                    # AND
+                                    if follower_theme == followee_theme:
+                                        feat_tag = ('cat=%s,aligned_theme' % (identity_category))
+                                        features[feat_tag] += incr
+    
+                                    # XOR
+                                    if follower_theme != followee_theme:
+                                        feat_tag = ('cat=%s,xor_theme' % (identity_category))
+                                        features[feat_tag] += incr
 
     # Candidate comparison space
     if label == 1:
@@ -438,7 +475,7 @@ def get_informative_features(features_vectorizer, model, model_name, data_dirpat
             f.write(f'{l}\n')
 
 
-def extract_features(feature_sets, instances, instance_labels, identity_categories, remove_zeros=False, initialization=None, categories=['all'], model_name=None, data_dirpath=None, extras=[]):
+def extract_features(feature_sets, instances, instance_labels, identity_categories, remove_zeros=False, initialization=None, categories=['all'], model_name=None, data_dirpath=None, save=False, extras=[]):
     """ Args:
             remove_zeros: whether or not to remove instances where the follower and all of their followees do not give the category
     """
@@ -474,7 +511,7 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
 
     keep_indices = []
 
-    for i, ((reblog_candidate, nonreblog_candidate), label, initial) in enumerate(zip(instances, instance_labels, initial_features)):
+    for i, ((reblog_candidate, nonreblog_candidate), label, initial) in enumerate(tqdm(zip(instances, instance_labels, initial_features), total=len(instances), ncols=50)):
 
         if remove_zeros:
             follower_id = reblog_candidate['tumblog_id_follower']
@@ -502,12 +539,19 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
         with open(outpath, 'wb') as f:
             pickle.dump(features_vectorizer, f)
 
+    # Save features
+    if save and data_dirpath and model_name:
+        outpath = os.path.join(data_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
+        with open(outpath, 'wb') as f:
+            pickle.dump((X_train, y_train, X_test, y_test), f)
+        
+
     # Save row indices of instances kept
-    if data_dirpath and model_name:
-        outpath = os.path.join(data_dirpath, 'output', f'{model_name.replace("/", "_").replace(" ", "_")}_instances_kept.txt')
-        with open(outpath, 'w') as f:
-            for i in keep_indices:
-                f.write(f"{i}\n")
+    #if data_dirpath and model_name:
+    #    outpath = os.path.join(data_dirpath, 'output', f'{model_name.replace("/", "_").replace(" ", "_")}_instances_kept.txt')
+    #    with open(outpath, 'w') as f:
+    #        for i in keep_indices:
+    #            f.write(f"{i}\n")
     
 
     return X_train, y_train, X_test, y_test, X, features_vectorizer
@@ -535,7 +579,14 @@ def main():
 
     parser = argparse.ArgumentParser(description='Extract features and run models')
     parser.add_argument('--remove-zeros', dest='remove_zeros', action='store_true')
+    parser.add_argument('--experiment1', dest='experiment1', action='store_true')
+    parser.add_argument('--experiment2', dest='experiment2', action='store_true')
+    parser.add_argument('--baseline', dest='baseline', action='store_true')
+    parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
     parser.set_defaults(remove_zeros=False)
+    parser.set_defaults(experiment1=False)
+    parser.set_defaults(experiment2=False)
+    parser.set_defaults(baseline=False)
     args = parser.parse_args()
 
     data_dirpath = '/usr2/mamille2/tumblr/data/sample1k'
@@ -556,60 +607,77 @@ def main():
 
     identity_categories = ['age', 'ethnicity/nationality', 'fandoms', 'gender',
                            'interests', 'location', 'personality type', 'pronouns', 'relationship status', 'roleplay',
-                           'sexual orientation', 'weight', 'zodiac']
+                           'sexual orientation', 'zodiac']
 
     # ### Create category label vocabulary
     category_vocabs = get_category_vocabs(instances, identity_categories, os.path.join(data_dirpath, 'processed_data', 'category_vocab.pkl'))
+    themes = get_themes(category_vocabs) 
+
+    # Classifier definitions
+    classifiers = {
+        'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2),
+        'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=2), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=2),
+        'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True)
+    }
     
     # ### Post baseline
     print("Extracting post baseline features...")
-    X_train, y_train, X_test, y_test, baseline_X, _ = extract_features(['post_baseline'], instances, instance_labels, identity_categories, extras=[tag_vocab])
-    #clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
+    X_train, y_train, X_test, y_test, baseline_X, features_vectorizer = extract_features(['post_baseline'], instances, instance_labels, identity_categories, extras=[tag_vocab])
 
-#    print("Running post baseline...")
-#    score, baseline_preds = run_model('lr_baseline', clf, X_train, y_train, X_test, y_test, data_dirpath)
-#    print(f'\tBaseline score: {score: .4f}')
+    if args.baseline:
 
-    # Load baseline predictions
-    baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'lr_baseline.txt'))
+        clf = classifiers[args.classifier_type]
 
-    print()
-    print("Running experiment 2...")
-
-    for category in tqdm(['all'] + identity_categories, ncols=50):
-        model_name = f'lr_baseline+exp1+exp2_{category}'
-        if args.remove_zeros: model_name = model_name + '_filtered'
-
-
-        # Baseline (only need for filtered)
-        #tqdm.write(f"\n{category} baseline")
-        #X_train, y_train, X_test, y_test, baseline_X, _ = extract_features(['post_baseline'], instances, instance_labels, identity_categories, remove_zeros=args.remove_zeros, categories=[category], model_name=f'lr_baseline_{category}', data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
-        #tqdm.write(f"Number of instances: {len(baseline_X)}")
-        #clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
-        #_, score, baseline_preds = run_model(f'lr_baseline_{category}', clf, X_train, y_train, X_test, y_test, data_dirpath)
-        #tqdm.write(f'\t{category} baseline score: {score: .4f}')
-
-        # Experiment 1
-        #tqdm.write(f"\n{category} experiment 1")
-        #X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(['post_baseline', 'experiment1'], instances, instance_labels, identity_categories, initialization=None, remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
-        #tqdm.write(f"Number of instances: {len(X)}")
-
-        # Experiment 2
-        tqdm.write(f"\n{category} experiment 2")
-        X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(['experiment1', 'experiment2'], instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
-        #tqdm.write(f"Number of instances: {len(X)}")
-
-        clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
-        model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
-        print(f'\t{category} {model_name} score: {score: .4f}')
-
-
-        # Significance test
-        test_result = run_mcnemar(baseline_preds, preds, y_test)
-        tqdm.write(f"McNemar's p-value: {test_result.pvalue: .6f}")
+        print("Running post baseline...")
+        model_name = f'{args.classifier_type}_baseline'
+        score, baseline_preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
+        print(f'\tBaseline score: {score: .4f}')
 
         # Save informative features
         get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
+
+    else:
+        # Load baseline predictions
+        baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'{args.classifier_type}_baseline.txt'))
+
+        experiments = []
+        if args.experiment1:
+            experiments.append('experiment1')
+        if args.experiment2:
+            experiments.append('experiment2')
+
+        base_model_name = f'{args.classifier_type}_baseline'
+
+        if experiments == ['experiment1']:
+            base_model_name = base_model_name + f'+exp1'
+        if experiments == ['experiment2']:
+            base_model_name = base_model_name + f'+exp2'
+
+        print(f"Running {' '.join(experiments)}...")
+        for category in tqdm(['all'] + identity_categories, ncols=50):
+        #for category in tqdm(identity_categories, ncols=50):
+        #for category in tqdm(['all'], ncols=50):
+
+            model_name = base_model_name + f'_{category}'
+
+            if args.remove_zeros: model_name = model_name + '_filtered'
+
+            tqdm.write(f"\n{category} {' '.join(experiments)}")
+
+            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=True, extras=[tag_vocab, category_vocabs, themes])
+            tqdm.write(f"Number of instances: {len(X)}")
+
+            clf = classifiers[args.classifier_type]
+            model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
+            print(f'{model_name} score: {score: .4f}')
+
+
+            # Significance test
+            test_result = run_mcnemar(baseline_preds, preds, y_test)
+            tqdm.write(f"McNemar's p-value: {test_result.pvalue: .6f}")
+
+            # Save informative features
+            get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
 
 if __name__ == '__main__':
