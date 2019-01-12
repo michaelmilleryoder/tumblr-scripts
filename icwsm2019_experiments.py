@@ -136,7 +136,7 @@ def get_groups():
                 'princess': ['F'],
                 },
         'location': {'u.k': ['uk'],
-                }
+                },
         'relationship status': {'single': ['single'],
                                 'couple': ['attached'],
                                 'taken': ['attached'],
@@ -147,7 +147,7 @@ def get_groups():
                                 'engaged': ['attached'],
                 },
         'sexual orientation': {'bisexual': ['queer'],
-                                'bi': ['bisexual', 'queer']
+                                'bi': ['bisexual', 'queer'],
                                 'ace': ['asexual', 'queer'],
                                 'asexual': ['queer'],
                                 'pansexual': ['queer'],
@@ -156,7 +156,8 @@ def get_groups():
                                 'lgbt': ['queer'],
                                 'queer': ['queer'],
                                 'homo': ['queer'],
-                                'wlw': ['lesbian', 'queer']
+                                'wlw': ['lesbian', 'queer'],
+                                'mlm': ['lesbian', 'queer'],
                                 'straight': ['straight'],
                 },
 
@@ -283,8 +284,14 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
                                                                                     identity_label_followee))
                             features[feat_tag] += incr
 
+                            # Followee-only
+                            #feat_tag = ('cat=%s,followee_lab=%s' % (identity_category,
+                                                                                    identity_label_followee))
+                            features[feat_tag] += incr
+
                         # Group features
-                        groupmap = get_groups() 
+                        #groupmap = get_groups() 
+
 
     # Candidate comparison space
     if label == 1:
@@ -538,7 +545,8 @@ def main():
     parser.set_defaults(remove_zeros=False)
     args = parser.parse_args()
 
-    data_dirpath = '/usr2/mamille2/tumblr/data/sample1k'
+    #data_dirpath = '/usr2/mamille2/tumblr/data/sample1k'
+    data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample1k'
 
     feature_tables_dir = os.path.join(data_dirpath, 'feature_tables')
     filenames = ['reblog_features.csv', 'nonreblog_features.csv', 'ranking_labels.csv']
@@ -577,7 +585,7 @@ def main():
     print("Running experiment 2...")
 
     for category in tqdm(['all'] + identity_categories, ncols=50):
-        model_name = f'lr_baseline+exp1+exp2_{category}'
+        model_name = f'lr_baseline+exp2_{category}'
         if args.remove_zeros: model_name = model_name + '_filtered'
 
 
@@ -596,10 +604,10 @@ def main():
 
         # Experiment 2
         tqdm.write(f"\n{category} experiment 2")
-        X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(['experiment1', 'experiment2'], instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
+        X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(['experiment2'], instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, extras=[tag_vocab, category_vocabs])
         #tqdm.write(f"Number of instances: {len(X)}")
 
-        clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2)
+        clf = linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=0)
         model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
         print(f'\t{category} {model_name} score: {score: .4f}')
 
