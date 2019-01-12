@@ -580,12 +580,13 @@ def main():
         print(f'\tBaseline score: {score: .4f}')
 
         # Save informative features
-        get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
+        if args.classifier_type != 'ffn':
+            get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
     # Run experiments
     else:
         # Load baseline predictions
-        baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'{args.classifier_type}_baseline.txt'))
+        baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'{args.classifier_type}_baseline_test_preds.txt'))
 
         experiments = []
         if args.experiment1:
@@ -601,9 +602,9 @@ def main():
             base_model_name = base_model_name + f'+exp2'
 
         print(f"Running {' '.join(experiments)}...")
-        for category in tqdm(['all'] + identity_categories, ncols=50):
+        #for category in tqdm(['all'] + identity_categories, ncols=50):
         #for category in tqdm(identity_categories, ncols=50):
-        #for category in tqdm(['all'], ncols=50):
+        for category in tqdm(['all'], ncols=50):
 
             model_name = base_model_name + f'_{category}'
 
@@ -624,7 +625,8 @@ def main():
             tqdm.write(f"McNemar's p-value: {test_result.pvalue: .6f}")
 
             # Save informative features
-            get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
+            if args.classifier_type != 'ffn':
+                get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
 
 if __name__ == '__main__':
