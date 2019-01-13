@@ -581,6 +581,8 @@ def main():
 
         # Save informative features
         if args.classifier_type != 'ffn':
+            if args.classifier_type == 'svm':
+                model = model.best_estimator_
             get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
     # Run experiments
@@ -626,6 +628,8 @@ def main():
 
             # Save informative features
             if args.classifier_type != 'ffn':
+                if args.classifier_type == 'svm':
+                    model = model.best_estimator_
                 get_informative_features(features_vectorizer, model, model_name, data_dirpath, n=10000)
 
 
