@@ -7,9 +7,11 @@ from sklearn import linear_model
 from sklearn import neural_network
 from sklearn import model_selection
 from sklearn import preprocessing
+from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn import svm
 import numpy as np
 from statsmodels.stats.contingency_tables import mcnemar
+from scipy.sparse import hstack, csr_matrix
 from tqdm import tqdm
 import pickle
 import pdb
@@ -18,6 +20,21 @@ import copy
 from operator import itemgetter
 
 from get_themes import get_themes
+
+
+def run_pca(train, test, data_dirpath=None, model_name=None):
+    pca = PCA(n_components=.9, svd_solver='full') # 90% of variance
+    #pca = TruncatedSVD(n_components=30)
+    train_reduced = pca.fit_transform(train)
+    test_reduced = pca.transform(test)
+
+    # Save PCA
+    if data_dirpath and model_name:
+        with open(os.path.join(data_dirpath, 'output', 'pca', model_name.replace('/','_').replace(' ', '_')), 'wb') as f:
+            pickle.dump(pca, f)
+
+    return train_reduced, test_reduced, pca
+
 
 def variance_analysis(instances, identity_categories):
     """ Returns: category_user_remove, a hashmap of a set of users who have zero presence of the category and all their followees also have zero presence of the category """
@@ -169,13 +186,8 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
             follower_presence = len(identity_category_follower) > 0
             identity_category_followee = eval(candidate[identity_category + '_terms_followee'])
             followee_presence = len(identity_category_followee) > 0
-    #             if followee_presence:
-    #                 feat_tag = ('followee_cat=%s' % identity_category)
-    #                 features[feat_tag] += incr
 
             # Alignment features
-    #             if ((follower_presence and followee_presence) or
-    #                 (not follower_presence and not followee_presence)):
             # AND
             if (follower_presence and followee_presence): # AND
                 feat_tag = ('aligned_cat=%s' % identity_category)
@@ -236,33 +248,36 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
                 if len(identity_category_follower) == 0:
                     identity_category_follower = ['empty']
 
-            follower_themes = [themes[identity_category][identity_label_follower] for identity_label_follower in identity_category_follower if identity_label_follower == 'empty' or identity_label_follower in category_vocabs[identity_category]]
-            follower_themes = [t for f in follower_themes for t in f]
+            for identity_label_followee in identity_category_followee:
+                if identity_label_followee == 'empty' or identity_label_followee in category_vocabs[identity_category]:
+                    followee_themes = themes[identity_category][identity_label_followee]
 
-            followee_themes = [themes[identity_category][identity_label_followee] for identity_label_followee in identity_category_followee if identity_label_followee == 'empty' or identity_label_followee in category_vocabs[identity_category]]
-            followee_themes = [t for f in followee_themes for t in f]
+                    for identity_label_follower in identity_category_follower:
 
-            union = len(set(follower_themes).union(set(followee_themes)))
-            intersection = len(set(follower_themes).intersection(set(followee_themes)))
+                        if identity_label_follower == 'empty' or identity_label_follower in category_vocabs[identity_category]:
+                            follower_themes = themes[identity_category][identity_label_follower]                            
+                            # Label interaction features
+                            #feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
+                            #                                                        identity_label_follower,
+                            #                                                        identity_label_followee))
+                            #features[feat_tag] += incr
 
-            # XOR
-            features[f'cat={identity_category},xor_theme'] += (union-intersection) * incr
+                            for follower_theme in follower_themes:
+                                for followee_theme in followee_themes:
 
-            # AND
-            features[f'cat={identity_category},aligned_theme'] += intersection * incr
+                                    # Theme interaction features
+                                    feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
+                                    features[feat_tag] += incr
 
-            # Theme interaction features
-            for follower_theme in follower_themes:
-                for followee_theme in followee_themes:
-
-                    feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
-                    features[feat_tag] += incr
-
-                    # Label interaction features
-                    #feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
-                    #                                                        identity_label_follower,
-                    #                                                        identity_label_followee))
-                    #features[feat_tag] += incr
+                                    # AND
+                                    if follower_theme == followee_theme:
+                                        feat_tag = ('cat=%s,aligned_theme' % (identity_category))
+                                        features[feat_tag] += incr
+    
+                                    # XOR
+                                    if follower_theme != followee_theme:
+                                        feat_tag = ('cat=%s,xor_theme' % (identity_category))
+                                        features[feat_tag] += incr
 
     # Candidate comparison space
     if label == 1:
@@ -416,10 +431,51 @@ def get_informative_features(features_vectorizer, model, model_name, data_dirpat
             f.write(f'{l}\n')
 
 
+def split_dataset(X, y, data_dirpath=None, model_name=None):
+
+    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.1, random_state=12345)
+
+    # Save features
+    if data_dirpath and model_name:
+        outpath = os.path.join(data_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
+        with open(outpath, 'wb') as f:
+            pickle.dump((X_train, y_train, X_test, y_test), f)
+        
+    return X_train, y_train, X_test, y_test
+
+
+def vectorize_features(X_train, X_test, data_dirpath=None, model_name=None):
+
+    features_vectorizer = feature_extraction.DictVectorizer()
+    features_scaler = preprocessing.StandardScaler(with_mean=False) # normalization standard scaler
+
+    X_train = features_vectorizer.fit_transform(X_train)
+    X_train = features_scaler.fit_transform(X_train)
+    X_test = features_vectorizer.transform(X_test)
+    X_test = features_scaler.transform(X_test)
+
+    # Save feature vectorizer for error analysis
+    if data_dirpath and model_name:
+        outpath = os.path.join(data_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
+        with open(outpath, 'wb') as f:
+            pickle.dump(features_vectorizer, f)
+
+    return X_train, X_test, features_vectorizer
+
+
 def extract_features(feature_sets, instances, instance_labels, identity_categories, remove_zeros=False, initialization=None, categories=['all'], model_name=None, data_dirpath=None, save=False, extras=[]):
     """ Args:
             remove_zeros: whether or not to remove instances where the follower and all of their followees do not give the category
     """
+
+    # Try loading data
+    if data_dirpath and model_name:
+        fpath = os.path.join(data_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
+        if os.path.exists(fpath):
+            with open(fpath, 'rb') as f:
+                X, y = pickle.load(f)
+            return X, y
+
     feature_set_extractors = {
         'post_baseline': extract_features_post_baseline,
         'experiment1': extract_features_experiment_1,
@@ -465,27 +521,8 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
             X.append(_extract_features(feature_sets, reblog_candidate, nonreblog_candidate, label, initial_features=initial, categories=categories, extras=extras))
             y.append(label)
         
-    features_vectorizer = feature_extraction.DictVectorizer()
-    features_scaler = preprocessing.StandardScaler(with_mean=False) # normalization standard scaler
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.1, random_state=12345)
-
-    X_train = features_vectorizer.fit_transform(X_train)
-    X_train = features_scaler.fit_transform(X_train)
-    X_test = features_vectorizer.transform(X_test)
-    X_test = features_scaler.transform(X_test)
-
-    # Save feature vectorizer for error analysis
-    if data_dirpath and model_name:
-        outpath = os.path.join(data_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
-        with open(outpath, 'wb') as f:
-            pickle.dump(features_vectorizer, f)
-
-    # Save features
-    if save and data_dirpath and model_name:
-        outpath = os.path.join(data_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
-        with open(outpath, 'wb') as f:
-            pickle.dump((X_train, y_train, X_test, y_test), f)
-        
+    #X_train, X_test, y_train, y_test = split_dataset(X, y)
+    #X_train, X_test, features_vectorizer = vectorize_features(X_train, X_test)
 
     # Save row indices of instances kept
     #if data_dirpath and model_name:
@@ -494,8 +531,13 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
     #        for i in keep_indices:
     #            f.write(f"{i}\n")
     
+    # Save features
+    if save and data_dirpath and model_name:
+        with open(fpath, 'wb') as f:
+            pickle.dump((X,y),f)
 
-    return X_train, y_train, X_test, y_test, X, features_vectorizer
+    #return X_train, y_train, X_test, y_test, X, features_vectorizer
+    return X, y
 
 
 def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
@@ -524,8 +566,8 @@ def main():
     parser.add_argument('--experiment2', dest='experiment2', action='store_true')
     parser.add_argument('--baseline', dest='baseline', action='store_true')
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
-    parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='', default='/usr2/mamille2/tumblr/data/sample1k')
     parser.add_argument('--categories', dest='categories', nargs='?', help='', default='all+all')
+    parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='', default='/usr2/mamille2/tumblr/data/sample1k')
     parser.set_defaults(remove_zeros=False)
     parser.set_defaults(experiment1=False)
     parser.set_defaults(experiment2=False)
@@ -565,7 +607,11 @@ def main():
     
     # ### Post baseline
     print("Extracting post baseline features...")
-    X_train, y_train, X_test, y_test, baseline_X, features_vectorizer = extract_features(['post_baseline'], instances, instance_labels, identity_categories, extras=[tag_vocab])
+    baseline_X, y = extract_features(['post_baseline'], instances, instance_labels, identity_categories, extras=[tag_vocab])
+
+    # Feature vectorizer, scaler
+    #baseline_train, y_train, baseline_test, y_test = split_dataset(baseline_X, y)
+    #baseline_train, baseline_test, _ = vectorize_features(baseline_train, baseline_test)
 
     # Run baseline
     if args.baseline:
@@ -601,12 +647,13 @@ def main():
         if experiments == ['experiment2']:
             base_model_name = base_model_name + f'+exp2'
 
+        print(f"Running {' '.join(experiments)}...")
+
         if args.categories == 'all+all':
             selected_categories = ['all'] + identity_categories
         else:
             selected_categories = args.categories.split(',')
 
-        print(f"Running {' '.join(experiments)}...")
         for category in tqdm(selected_categories, ncols=50):
 
             model_name = base_model_name + f'_{category}'
@@ -615,13 +662,26 @@ def main():
 
             tqdm.write(f"\n{category} {' '.join(experiments)}")
 
-            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=False, extras=[tag_vocab, category_vocabs, themes])
-            tqdm.write(f"Number of instances: {len(X)}")
+            X, y = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=False, extras=[tag_vocab, category_vocabs, themes])
+            #X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=False, extras=[tag_vocab, category_vocabs, themes])
+            #exp_X, y = extract_features(experiments, instances, instance_labels, identity_categories, initialization=None, remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=True, extras=[tag_vocab, category_vocabs, themes])
+
+            # Feature vectorizer, scaler
+            exp_train, y_train, exp_test, y_test = split_dataset(exp_X, y)
+            exp_train, exp_test, features_vectorizer = vectorize_features(exp_train, exp_test, data_dirpath=data_dirpath, model_name=model_name)
+
+            # PCA
+            #exp_reduced_train, exp_reduced_test, pca = run_pca(exp_train.A, exp_test.A, data_dirpath=data_dirpath, model_name=model_name)
+
+            # hstack baseline and experiment features
+            #X_train = hstack([baseline_train, csr_matrix(exp_reduced_train)])
+            #X_test = hstack([baseline_test, csr_matrix(exp_reduced_test)])
+            #tqdm.write(f"Number of instances: {len(X)}")
+            tqdm.write(f"Shape of training set: {X_train.shape}")
 
             clf = classifiers[args.classifier_type]
             model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
             print(f'{model_name} score: {score: .4f}')
-
 
             # Significance test
             test_result = run_mcnemar(baseline_preds, preds, y_test)
