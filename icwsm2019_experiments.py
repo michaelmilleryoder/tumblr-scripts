@@ -236,33 +236,37 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
                 if len(identity_category_follower) == 0:
                     identity_category_follower = ['empty']
 
-            follower_themes = [themes[identity_category][identity_label_follower] for identity_label_follower in identity_category_follower if identity_label_follower == 'empty' or identity_label_follower in category_vocabs[identity_category]]
-            follower_themes = [t for f in follower_themes for t in f]
+    #        follower_themes = [themes[identity_category][identity_label_follower] for identity_label_follower in identity_category_follower if identity_label_follower == 'empty' or identity_label_follower in category_vocabs[identity_category]]
+    #        follower_themes = [t for f in follower_themes for t in f]
 
-            followee_themes = [themes[identity_category][identity_label_followee] for identity_label_followee in identity_category_followee if identity_label_followee == 'empty' or identity_label_followee in category_vocabs[identity_category]]
-            followee_themes = [t for f in followee_themes for t in f]
+    #        followee_themes = [themes[identity_category][identity_label_followee] for identity_label_followee in identity_category_followee if identity_label_followee == 'empty' or identity_label_followee in category_vocabs[identity_category]]
+            #followee_themes = [t for f in followee_themes for t in f]
 
-            union = len(set(follower_themes).union(set(followee_themes)))
-            intersection = len(set(follower_themes).intersection(set(followee_themes)))
+#            union = len(set(follower_themes).union(set(followee_themes)))
+#            intersection = len(set(follower_themes).intersection(set(followee_themes)))
+            union = len(set(identity_category_follower).union(set(identity_category_followee)))
+            intersection = len(set(identity_category_follower).intersection(set(identity_category_followee)))
 
             # XOR
-            features[f'cat={identity_category},xor_theme'] += (union-intersection) * incr
+            #features[f'cat={identity_category},xor_theme'] += (union-intersection) * incr
+            features[f'cat={identity_category},xor_label'] += (union-intersection) * incr
 
             # AND
-            features[f'cat={identity_category},aligned_theme'] += intersection * incr
+            #features[f'cat={identity_category},aligned_theme'] += intersection * incr
+            features[f'cat={identity_category},aligned_label'] += intersection * incr
 
             # Theme interaction features
-            for follower_theme in follower_themes:
-                for followee_theme in followee_themes:
+            #for follower_theme in follower_themes:
+            #    for followee_theme in followee_themes:
 
-                    feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
+            #        feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
+            #        features[feat_tag] += incr
+
+            # Label interaction features
+            for identity_label_follower in identity_category_follower:
+                for identity_label_followee in identity_category_followee:
+                    feat_tag = ('cat=%s,follower_label=%s,followee_label=%s' % (identity_category, identity_label_follower, identity_label_followee))
                     features[feat_tag] += incr
-
-                    # Label interaction features
-                    #feat_tag = ('cat=%s,follower_lab=%s,followee_lab=%s' % (identity_category,
-                    #                                                        identity_label_follower,
-                    #                                                        identity_label_followee))
-                    #features[feat_tag] += incr
 
     # Candidate comparison space
     if label == 1:
@@ -420,6 +424,19 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
     """ Args:
             remove_zeros: whether or not to remove instances where the follower and all of their followees do not give the category
     """
+    # Try loading data
+    if data_dirpath and model_name:
+        features_fpath = os.path.join(data_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
+        vectorizer_fpath = os.path.join(data_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
+
+        if os.path.exists(features_fpath):
+            with open(fpath, 'rb') as f:
+                X_train, y_train, X_test, y_test = pickle.load(f)
+            with open(vectorizer_fpath, 'rb') as f:
+                features_vectorizer = pickle.load(f)
+
+            return X_train, y_train, X_test, y_test, _, features_vectorizer
+
     feature_set_extractors = {
         'post_baseline': extract_features_post_baseline,
         'experiment1': extract_features_experiment_1,
@@ -436,6 +453,7 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
         # Build hashmap of followers that have zero presence of the category and all their followees do, too, for each category
         category_user_remove = variance_analysis(instances, identity_categories)
         remove_ids = set.intersection(*[set(category_user_remove[c]) for c in categories])
+
 
     def _extract_features(feature_sets, reblog_candidate, nonreblog_candidate, label, initial_features={}, categories=categories, extras=extras):
         instance_features = initial_features
@@ -499,6 +517,7 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
 
 
 def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
+    """ Train model, make predictions """
 
     model = clf.fit(X_train, y_train)
     score = model.score(X_test, y_test)
@@ -513,6 +532,11 @@ def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
     with open(os.path.join(data_dirpath, 'models', f'{model_name.replace("/", "_").replace(" ", "_")}.pkl'), 'wb') as f:
         pickle.dump(model, f)
 
+    # Save activations for neurons
+    pdb.set_trace()
+    if model_name.startswith('ffn'):
+        pdb.set_trace()
+
     return model, score, model_pred
 
 
@@ -524,6 +548,7 @@ def main():
     parser.add_argument('--experiment2', dest='experiment2', action='store_true')
     parser.add_argument('--baseline', dest='baseline', action='store_true')
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
+    parser.add_argument('--name', dest='model_name', nargs='?', help='model name base', default=None)
     parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='', default='/usr2/mamille2/tumblr/data/sample1k')
     parser.add_argument('--categories', dest='categories', nargs='?', help='', default='all+all')
     parser.set_defaults(remove_zeros=False)
@@ -558,7 +583,7 @@ def main():
 
     # Classifier definitions
     classifiers = {
-        'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=1000, verbose=2),
+        'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=10000, verbose=2),
         'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=0), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=2),
         'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True, verbose=2)
     }
@@ -573,7 +598,11 @@ def main():
         clf = classifiers[args.classifier_type]
 
         print("Running post baseline...")
-        model_name = f'{args.classifier_type}_baseline'
+        if args.model_name is None:
+            model_name = f'{args.classifier_type}_baseline'
+        else:
+            model_name = args.model_name
+
         model, score, baseline_preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
         print(f'\tBaseline score: {score: .4f}')
 
@@ -594,11 +623,14 @@ def main():
         if args.experiment2:
             experiments.append('experiment2')
 
-        base_model_name = f'{args.classifier_type}_baseline'
+        if args.model_name is None:
+            base_model_name = f'{args.classifier_type}_baseline'
+        else:
+            base_model_name = args.model_name
 
-        if experiments == ['experiment1']:
+        if 'experiment1' in experiments:
             base_model_name = base_model_name + f'+exp1'
-        if experiments == ['experiment2']:
+        if 'experiment2' in experiments:
             base_model_name = base_model_name + f'+exp2'
 
         if args.categories == 'all+all':
@@ -615,7 +647,7 @@ def main():
 
             tqdm.write(f"\n{category} {' '.join(experiments)}")
 
-            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=False, extras=[tag_vocab, category_vocabs, themes])
+            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=True, extras=[tag_vocab, category_vocabs, themes])
             tqdm.write(f"Number of instances: {len(X)}")
 
             clf = classifiers[args.classifier_type]
