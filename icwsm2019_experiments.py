@@ -16,6 +16,7 @@ import pdb
 import argparse
 import copy
 from operator import itemgetter
+from scipy.sparse import vstack
 
 from get_themes import get_themes
 
@@ -430,12 +431,12 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
         vectorizer_fpath = os.path.join(data_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
 
         if os.path.exists(features_fpath):
-            with open(fpath, 'rb') as f:
+            with open(features_fpath, 'rb') as f:
                 X_train, y_train, X_test, y_test = pickle.load(f)
             with open(vectorizer_fpath, 'rb') as f:
                 features_vectorizer = pickle.load(f)
 
-            return X_train, y_train, X_test, y_test, _, features_vectorizer
+            return X_train, y_train, X_test, y_test, vstack([X_train, X_test]), features_vectorizer
 
     feature_set_extractors = {
         'post_baseline': extract_features_post_baseline,
@@ -533,9 +534,8 @@ def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
         pickle.dump(model, f)
 
     # Save activations for neurons
-    pdb.set_trace()
-    if model_name.startswith('ffn'):
-        pdb.set_trace()
+    #if model_name.startswith('ffn'):
+        #pdb.set_trace()
 
     return model, score, model_pred
 
@@ -647,8 +647,19 @@ def main():
 
             tqdm.write(f"\n{category} {' '.join(experiments)}")
 
-            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(experiments, instances, instance_labels, identity_categories, initialization=copy.deepcopy(baseline_X), remove_zeros=args.remove_zeros, categories=[category], model_name=model_name, data_dirpath=data_dirpath, save=True, extras=[tag_vocab, category_vocabs, themes])
-            tqdm.write(f"Number of instances: {len(X)}")
+            X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(
+                experiments, 
+                instances, 
+                instance_labels, 
+                identity_categories, 
+                initialization=copy.deepcopy(baseline_X), 
+                remove_zeros=args.remove_zeros, 
+                categories=[category], 
+                model_name=model_name, 
+                data_dirpath=data_dirpath, 
+                save=True, 
+                extras=[tag_vocab, category_vocabs, themes])
+            tqdm.write(f"Number of instances: {X.shape[0]}")
 
             clf = classifiers[args.classifier_type]
             model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
