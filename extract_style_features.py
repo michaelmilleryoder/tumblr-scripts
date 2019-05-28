@@ -3,6 +3,7 @@ import os, sys
 from tqdm import tqdm as tqdm
 from string import punctuation
 from nltk.corpus import words
+import argparse
 import pdb
 
 en_words = set(words.words())
@@ -53,8 +54,12 @@ def extract_style_features(text):
 
 def main():
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', nargs='?', help='Dataset name')
+    args = parser.parse_args()
+
     # I/O
-    dataset = sys.argv[1]
+    dataset = args.dataset
     data_dirpath = '../data'
     posts_path = os.path.join(data_dirpath, f'{dataset}_posts.pkl')
     data = pd.read_pickle(posts_path)

@@ -94,7 +94,7 @@ def remove_usernames_text(data):
     blog_names = set(data['source_title'].unique()) # might not all be strings
     dict_wds = set(words.words())
     blog_names = blog_names - dict_wds
-    data['body_toks_no_titles'] = list(map(lambda x: [t for t in x if not t in blog_names], tqdm(data['body_toks'].tolist())))
+    data['body_toks_no_titles'] = list(map(lambda x: [t for t in x if not t in blog_names], tqdm(data['body_toks'].tolist(), ncols=50)))
     data['body_toks_str_no_titles'] = data['body_toks_no_titles'].map(lambda x: ' '.join(x))
 
 def save_text_file(text_rows, outpath):
@@ -111,7 +111,7 @@ def read_dir(posts_dirpath, debug):
     else:
         fnames = os.listdir(posts_dirpath)
 
-    for fname in tqdm(fnames):
+    for fname in tqdm(fnames, ncols=50):
         fpath = os.path.join(posts_dirpath, fname)
         try:
             part = pd.read_csv(fpath, sep='\t', low_memory=False)
@@ -159,7 +159,7 @@ def main():
         data['body_str'] = data['body_toks'].map(lambda x: ' '.join(x))
 
     elif input_format == 'dir':
-        data['post_body'] = list(map(preprocess_post_content, tqdm(data['post_content'])))
+        data['post_body'] = list(map(preprocess_post_content, tqdm(data['post_content'], ncols=50)))
         data = data[data['post_body'].map(lambda x: len(x) > 0)]
         
 
