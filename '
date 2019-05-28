@@ -9,29 +9,26 @@ from tqdm import tqdm
 from nltk.corpus import words
 import argparse
 import pdb
-import csv
-import warnings
-import spacy
 
+import spacy
 nlp = spacy.load('en', disable=['tagger', 'parser', 'ner'])
 
 
 # Settings
 parser = argparse.ArgumentParser()
 parser.add_argument('dataset', nargs='?', help='Dataset name')
-parser.add_argument('--debug', dest='debug', action='store_true')
 args = parser.parse_args()
 
 input_format = 'dir' # {dir, tsv, pickle}
 remove_usernames = False
 save_text = False
 save_final = True # might be such a big file that don't want to add to pickle
-debug = args.debug
+debug = False
 
 # I/O
 #data_dirpath = '/usr2/mamille2/tumblr/data'
 data_dirpath = '../data'
-dataset = args.dataset
+dataset = args.
 #posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # recent 100 posts, even if don't have 100
 posts_path = os.path.join(data_dirpath, f'{dataset}_posts')
 posts_outpath = os.path.join(data_dirpath, f'{dataset}_posts.pkl') 
@@ -49,12 +46,9 @@ class MLStripper(HTMLParser):
         return ' '.join(self.fed)
 
 def clean_html(html):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        soup = BeautifulSoup(html, 'lxml')
-        for s in soup(['script', 'style']):
-            s.decompose()
-
+    soup = BeautifulSoup(html, 'lxml')
+    for s in soup(['script', 'style']):
+        s.decompose()
     return ' '.join(soup.stripped_strings)
 
 def strip_tags(html):
@@ -64,7 +58,7 @@ def strip_tags(html):
     return s.get_data()
 
 def find_body(post_content):
-    m = re.search(r'body=(.*), note_count', post_content)
+    m = re.search(r'body=(.*), note_count', text)
     if not m: return ''
     body = m.group(1)
     return body
@@ -89,7 +83,7 @@ def preprocess_post_content(text):
     
     return ' '.join(toks)
 
-def remove_usernames_text(data):
+def remove_usernames(data):
     """ Removes usernames, saves in separate columns """
     blog_names = set(data['source_title'].unique()) # might not all be strings
     dict_wds = set(words.words())
@@ -102,19 +96,11 @@ def save_text_file(text_rows, outpath):
         for post in text_rows:
             f.write(post + '\n')
 
-def read_dir(posts_dirpath, debug):
-    
-    posts = []
-    tqdm.write('\nConcatenating files into dataframe...')
-    if debug:
-        fnames = os.listdir(posts_dirpath)[:1]
-    else:
-        fnames = os.listdir(posts_dirpath)
-
-    for fname in tqdm(fnames):
-        fpath = os.path.join(posts_dirpath, fname)
+def read_dir(posts_dirpath):
+    for fname in tqdm(os.listdir(data_dirpath)):
+        fpath = os.path.join(data_dirpath, fname)
         try:
-            part = pd.read_csv(fpath, sep='\t', low_memory=False)
+            part = pd.read_csv(fpath, sep='\t')
         except:
             part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
         posts.extend(part.values.tolist())
@@ -124,11 +110,7 @@ def read_dir(posts_dirpath, debug):
     data.dropna(subset=['post_id'], inplace=True)
     data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
 
-    if debug:
-        return data.head(100)
-
-    else:
-        return data
+    return data
 
 
 def main():
@@ -139,7 +121,7 @@ def main():
     sys.stdout.flush()
 
     if input_format == 'dir':
-        data = read_dir(posts_path, debug)
+        data = read_dir(posts_path)
 
     if input_format == 'pickle':
         if debug:
@@ -151,21 +133,24 @@ def main():
 
 
     # Tokenize, preprocess all posts
-    print("Preprocessing posts...")
+    print("Preprocessing posts...", end=' ')
     sys.stdout.flush()
 
-    if input_format == 'pickle':    
+    if input_format == 'pickle':
         data['body_toks'] = list(map(preprocess_post, tqdm(data['body'].tolist())))
         data['body_str'] = data['body_toks'].map(lambda x: ' '.join(x))
 
     elif input_format == 'dir':
-        data['post_body'] = list(map(preprocess_post_content, tqdm(data['post_content'])))
-        data = data[data['post_body'].map(lambda x: len(x) > 0)]
+	data['post_body'] = list(map(preprocess_post_content, tqdm(data['post_content'])))
+	data = data[data['post_body'].map(lambda x: len(x) > 0)]
         
+
+    print('done.')
+    sys.stdout.flush()
 
     # Remove usernames
     if remove_usernames:
-        remove_usernames_text(data)
+        remove_usernames(data)
 
     # Save text file (for eg training word embeddings)
     if save_text:
@@ -177,9 +162,9 @@ def main():
 
     # Save data
     if save_final:
-        print(f"Saving tokenized file to {posts_outpath}...", end=' ')
+        print(f"Saving tokenized file to {posts_fpath}...", end=' ')
         sys.stdout.flush()
-        data.to_pickle(posts_outpath)
+        data.to_pickle(posts_fpath)
         print("done")
         sys.stdout.flush()
 
