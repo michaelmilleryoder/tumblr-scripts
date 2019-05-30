@@ -12,30 +12,8 @@ import pdb
 import csv
 import warnings
 import spacy
+import pdb
 
-nlp = spacy.load('en', disable=['tagger', 'parser', 'ner'])
-
-
-# Settings
-parser = argparse.ArgumentParser()
-parser.add_argument('dataset', nargs='?', help='Dataset name')
-parser.add_argument('--debug', dest='debug', action='store_true')
-args = parser.parse_args()
-
-input_format = 'dir' # {dir, tsv, pickle}
-remove_usernames = False
-save_text = False
-save_final = True # might be such a big file that don't want to add to pickle
-debug = args.debug
-
-# I/O
-#data_dirpath = '/usr2/mamille2/tumblr/data'
-data_dirpath = '../data'
-dataset = args.dataset
-#posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # recent 100 posts, even if don't have 100
-posts_path = os.path.join(data_dirpath, f'{dataset}_posts')
-posts_outpath = os.path.join(data_dirpath, f'{dataset}_posts.pkl') 
-text_outpath = posts_outpath[:-3] + 'txt'
 
 
 class MLStripper(HTMLParser):
@@ -89,20 +67,36 @@ def preprocess_post_content(text):
     
     return ' '.join(toks)
 
-def remove_usernames_text(data):
-    """ Removes usernames, saves in separate columns """
-    blog_names = set(data['source_title'].unique()) # might not all be strings
+
+def remove_usernames_column(data, source=None):
+    """ Removes usernames, saves in separate columns.
+        Args:
+            source: Filepath to a line-separated list of usernames. 
+                If None, will build a list of usernames from the post data.
+    """
+
+    def remove_usernames_text(text):
+        for name in blog_names:
+            text = text.replace(blog_name, ' ')
+
+    if source:
+        with open(source, 'r') as f:
+            blog_names = f.read().splitlines()
+    else:
+        blog_names = set(data['source_title'].unique()) # might not all be strings
+
     dict_wds = set(words.words())
     blog_names = blog_names - dict_wds
-    data['body_toks_no_titles'] = list(map(lambda x: [t for t in x if not t in blog_names], tqdm(data['body_toks'].tolist(), ncols=50)))
-    data['body_toks_str_no_titles'] = data['body_toks_no_titles'].map(lambda x: ' '.join(x))
+    data['body_str_no_names'] = list(map(remove_usernames_text, tqdm(data['body_str']), ncols=50))
+
+    return data
 
 def save_text_file(text_rows, outpath):
     with open(outpath, 'a') as f:
         for post in text_rows:
             f.write(post + '\n')
 
-def read_dir(posts_dirpath, debug):
+def read_dir_batch(posts_dirpath, debug, batch=False):
     
     posts = []
     tqdm.write('\nConcatenating files into dataframe...')
@@ -119,10 +113,39 @@ def read_dir(posts_dirpath, debug):
             part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
         posts.extend(part.values.tolist())
 
-    data = pd.DataFrame(posts, columns=part.columns)
-    data.drop_duplicates('post_id', inplace=True)
-    data.dropna(subset=['post_id'], inplace=True)
-    data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
+        data = pd.DataFrame(posts, columns=part.columns)
+        data.drop_duplicates('post_id', inplace=True)
+        data.dropna(subset=['post_id'], inplace=True)
+        data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
+
+    if debug:
+        return data.head(100)
+
+    else:
+        return data
+
+
+def read_dir_all(posts_dirpath, debug, batch=False):
+    
+    posts = []
+    tqdm.write('\nConcatenating files into dataframe...')
+    if debug:
+        fnames = os.listdir(posts_dirpath)[:1]
+    else:
+        fnames = os.listdir(posts_dirpath)
+
+    for fname in tqdm(fnames, ncols=50):
+        fpath = os.path.join(posts_dirpath, fname)
+        try:
+            part = pd.read_csv(fpath, sep='\t', low_memory=False)
+        except:
+            part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
+        posts.extend(part.values.tolist())
+
+        data = pd.DataFrame(posts, columns=part.columns)
+        data.drop_duplicates('post_id', inplace=True)
+        data.dropna(subset=['post_id'], inplace=True)
+        data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
 
     if debug:
         return data.head(100)
@@ -132,14 +155,44 @@ def read_dir(posts_dirpath, debug):
 
 
 def main():
+    nlp = spacy.load('en', disable=['tagger', 'parser', 'ner'])
 
+    # Settings
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dataset', nargs='?', help='Dataset name')
+    parser.add_argument('--remove-usernames', dest='remove_usernames', action='store_true')
+    parser.add_argument('--debug', dest='debug', action='store_true')
+    args = parser.parse_args()
+
+    input_format = 'dir' # {dir, tsv, pickle}
+    save_text = False
+    save_final = True # might be such a big file that don't want to add to pickle
+    batch = False
+    debug = args.debug
+
+    # I/O
+    #data_dirpath = '/usr2/mamille2/tumblr/data'
+    data_dirpath = '../data'
+    dataset = args.dataset
+    #posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # recent 100 posts, even if don't have 100
+    posts_path = os.path.join(data_dirpath, f'{dataset}_posts')
+    posts_outpath = os.path.join(data_dirpath, f'{dataset}_posts.pkl') 
+    text_outpath = posts_outpath[:-3] + 'txt'
+
+    # See if dir size is too big to concatenate and process
+    #if input_format == 'dir':
+    #    dataset_size = sum(os.path.getsize(f) for f in os.listdir(posts_path))
+
+    #    if dataset_size > 1e10: # 10 GB
+    #        batch = True
+        
 
     # Load posts
     print("Loading data...", end=' ')
     sys.stdout.flush()
 
     if input_format == 'dir':
-        data = read_dir(posts_path, debug)
+        data = read_dir_all(posts_path, debug)
 
     if input_format == 'pickle':
         if debug:
@@ -164,8 +217,8 @@ def main():
         
 
     # Remove usernames
-    if remove_usernames:
-        remove_usernames_text(data)
+    if args.remove_usernames:
+        data = remove_usernames_text(data)
 
     # Save text file (for eg training word embeddings)
     if save_text:
