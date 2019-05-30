@@ -486,6 +486,7 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
         
     features_vectorizer = feature_extraction.DictVectorizer()
     features_scaler = preprocessing.StandardScaler(with_mean=False) # normalization standard scaler
+
     X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.1, random_state=12345)
 
     X_train = features_vectorizer.fit_transform(X_train)
@@ -533,10 +534,6 @@ def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
     with open(os.path.join(data_dirpath, 'models', f'{model_name.replace("/", "_").replace(" ", "_")}.pkl'), 'wb') as f:
         pickle.dump(model, f)
 
-    # Save activations for neurons
-    #if model_name.startswith('ffn'):
-        #pdb.set_trace()
-
     return model, score, model_pred
 
 
@@ -550,7 +547,7 @@ def main():
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
     parser.add_argument('--name', dest='model_name', nargs='?', help='model name base, None just puts classifier and features', default=None)
     parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='dirpath; default /usr2/mamille2/tumblr/data/sample1k', default='/usr2/mamille2/tumblr/data/sample1k')
-    parser.add_argument('--categories', dest='categories', nargs='?', help='default all', default='all+all')
+    parser.add_argument('--categories', dest='categories', nargs='?', help='default all single categories + all together', default='all+all')
     parser.set_defaults(remove_zeros=False)
     parser.set_defaults(experiment1=False)
     parser.set_defaults(experiment2=False)
@@ -659,7 +656,7 @@ def main():
                 data_dirpath=data_dirpath, 
                 save=True, 
                 extras=[tag_vocab, category_vocabs, themes])
-            tqdm.write(f"Number of instances: {X.shape[0]}")
+            tqdm.write(f"Number of instances: {X_train.shape[0] + X_test.shape[0]}")
 
             clf = classifiers[args.classifier_type]
             model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath)
