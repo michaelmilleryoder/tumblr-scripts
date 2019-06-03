@@ -12,8 +12,11 @@ import pdb
 import csv
 import warnings
 import spacy
+from multiprocessing import Pool, Manager
 import pdb
+import itertools
 
+nlp = spacy.load('en', disable=['tagger', 'parser', 'ner'])
 
 
 class MLStripper(HTMLParser):
@@ -47,14 +50,29 @@ def find_body(post_content):
     body = m.group(1)
     return body
 
-def preprocess_post_content(text):
-    
+
+def preprocess(column, post_type):
+    """ Takes a dataframe column, preprocesses all text """
+
+    with Pool() as p:
+        params = list(zip(column,
+			    itertools.repeat(post_type),
+				))
+        processed = list(tqdm(p.imap(preprocess_post_content, params), total=len(column), ncols=70))
+
+    return processed
+
+def preprocess_post_content(params):
+
+    text, post_type = params
+
     if not isinstance(text, str):
         return ''
 
     # Find post content
-    text = find_body(text)
-    if text == '': return text
+    if post_type == 'text':
+        text = find_body(text)
+        if text == '': return text
 	    
     # Strip html tags
     nohtml = strip_tags(text)
@@ -67,27 +85,72 @@ def preprocess_post_content(text):
     
     return ' '.join(toks)
 
+#def check_username_text(params):
+def check_username_text(name):
+    #name, text = params
+    if name in original_text:
+        present[name] = True
 
-def remove_usernames_column(data, source=None):
+
+def remove_usernames_text(text, blog_names, debug):
+
+    #if debug:
+    #    for name in tqdm(list(blog_names)[:100], ncols=50):
+    #        text = text.replace(name, ' ')
+    #else:
+
+    manager = Manager()
+    global present
+    present = manager.dict()
+    global original_text
+    original_text = text
+
+    # Check what usernames are in the text (multiprocess)
+    with Pool() as p:
+        #params = list(zip(blog_names,
+	#		    itertools.repeat(text),
+	#			))
+        #list(tqdm(p.imap(check_username_text, params), total=len(blog_names), ncols=70))
+        list(tqdm(p.imap(check_username_text, blog_names), total=len(blog_names), ncols=70))
+
+    for name in tqdm(present, total=len(present), ncols=70):
+    #for name in tqdm(blog_names, total=len(blog_names), ncols=100):
+        text = text.replace(name, ' ')
+
+    return text
+
+
+def remove_usernames_column(data, source=None, debug=False):
     """ Removes usernames, saves in separate columns.
         Args:
             source: Filepath to a line-separated list of usernames. 
                 If None, will build a list of usernames from the post data.
     """
 
-    def remove_usernames_text(text):
-        for name in blog_names:
-            text = text.replace(blog_name, ' ')
-
     if source:
         with open(source, 'r') as f:
-            blog_names = f.read().splitlines()
+            if debug:   
+                blog_names = set()
+                for i, line in enumerate(f):
+#                    if i >= 100:
+#                        break
+                    if len(line) > 5:
+                        blog_names.add(line)
+            else:
+                blog_names = set([name for name in f.read().splitlines() if len(name) > 5])
     else:
         blog_names = set(data['source_title'].unique()) # might not all be strings
 
     dict_wds = set(words.words())
     blog_names = blog_names - dict_wds
-    data['body_str_no_names'] = list(map(remove_usernames_text, tqdm(data['body_str']), ncols=50))
+    #data['post_body_no_blognames'] = list(map(remove_usernames_text, tqdm(data['post_body'], ncols=50)))
+    #data['post_body_no_blognames'] = list(map(lambda x: re.sub(p, x, ' '), tqdm(data['post_body'], ncols=50)))
+    sep = ' |a|a|a|a| '
+    all_text = sep.join(data['post_body'].tolist())
+    all_text_no_blog_names = remove_usernames_text(all_text, blog_names, debug)
+    if all_text_no_blog_names.count(sep) + 1 != len(data):
+        pdb.set_trace()
+    data['post_body_no_blognames'] = all_text_no_blog_names.split(sep)
 
     return data
 
@@ -95,34 +158,6 @@ def save_text_file(text_rows, outpath):
     with open(outpath, 'a') as f:
         for post in text_rows:
             f.write(post + '\n')
-
-def read_dir_batch(posts_dirpath, debug, batch=False):
-    
-    posts = []
-    tqdm.write('\nConcatenating files into dataframe...')
-    if debug:
-        fnames = os.listdir(posts_dirpath)[:1]
-    else:
-        fnames = os.listdir(posts_dirpath)
-
-    for fname in tqdm(fnames, ncols=50):
-        fpath = os.path.join(posts_dirpath, fname)
-        try:
-            part = pd.read_csv(fpath, sep='\t', low_memory=False)
-        except:
-            part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
-        posts.extend(part.values.tolist())
-
-        data = pd.DataFrame(posts, columns=part.columns)
-        data.drop_duplicates('post_id', inplace=True)
-        data.dropna(subset=['post_id'], inplace=True)
-        data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
-
-    if debug:
-        return data.head(100)
-
-    else:
-        return data
 
 
 def read_dir_all(posts_dirpath, debug, batch=False):
@@ -142,25 +177,27 @@ def read_dir_all(posts_dirpath, debug, batch=False):
             part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
         posts.extend(part.values.tolist())
 
-        data = pd.DataFrame(posts, columns=part.columns)
-        data.drop_duplicates('post_id', inplace=True)
-        data.dropna(subset=['post_id'], inplace=True)
-        data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
+    data = pd.DataFrame(posts, columns=part.columns)
+    data.drop_duplicates('post_id', inplace=True)
+    data.dropna(subset=['post_id'], inplace=True)
+    data = data[data['post_content'].map(lambda x: isinstance(x, str) and len(x) > 0)]
 
     if debug:
-        return data.head(100)
+        return data.head(1000)
 
     else:
         return data
 
 
 def main():
-    nlp = spacy.load('en', disable=['tagger', 'parser', 'ner'])
 
     # Settings
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', nargs='?', help='Dataset name')
-    parser.add_argument('--remove-usernames', dest='remove_usernames', action='store_true')
+    parser.add_argument('input', nargs='?', help='Input path to dir or file')
+    parser.add_argument('output', nargs='?', help='Output filepath')
+    parser.add_argument('--post-type', dest='post_type', nargs='?', help='Post type: {text, caption}', default='text')
+    #parser.add_argument('--remove-usernames', dest='remove_usernames', action='store_true')
+    parser.add_argument('--remove-usernames', nargs='?', dest='remove_usernames', default=None)
     parser.add_argument('--debug', dest='debug', action='store_true')
     args = parser.parse_args()
 
@@ -172,12 +209,24 @@ def main():
 
     # I/O
     #data_dirpath = '/usr2/mamille2/tumblr/data'
-    data_dirpath = '../data'
-    dataset = args.dataset
+    #dataset = args.dataset
     #posts_fpath = os.path.join(data_dirpath, 'textposts_recent100.pkl') # recent 100 posts, even if don't have 100
-    posts_path = os.path.join(data_dirpath, f'{dataset}_posts')
-    posts_outpath = os.path.join(data_dirpath, f'{dataset}_posts.pkl') 
+    #posts_path = f'../data/textposts_captions/{dataset}/posts'
+    #posts_outpath = f'../data/textposts_captions/{dataset}_posts.pkl'
+    #blog_names_fpath = '../data/blog_names.txt'
+    blog_names_fpath = args.remove_usernames
+    posts_path = args.input
+    if debug:
+        posts_outpath = args.output + '.debug'
+    else:
+        posts_outpath = args.output
     text_outpath = posts_outpath[:-3] + 'txt'
+    if args.post_type == 'text':
+        text_col = 'post_content'
+    elif args.post_type == 'caption':
+        text_col = 'post_caption'
+    else:
+        raise ValueError("Must specify `text' or `caption' input")
 
     # See if dir size is too big to concatenate and process
     #if input_format == 'dir':
@@ -194,7 +243,7 @@ def main():
     if input_format == 'dir':
         data = read_dir_all(posts_path, debug)
 
-    if input_format == 'pickle':
+    elif input_format == 'pickle':
         if debug:
             data = pd.read_pickle(posts_fpath).head(100)
         else:
@@ -212,13 +261,16 @@ def main():
         data['body_str'] = data['body_toks'].map(lambda x: ' '.join(x))
 
     elif input_format == 'dir':
-        data['post_body'] = list(map(preprocess_post_content, tqdm(data['post_content'], ncols=50)))
+        #data['post_body'] = list(map(preprocess_post_content, tqdm(data[text_col], ncols=50)))
+        #data['post_body'] = [preprocess_post_content(t, args.post_type) for t in tqdm(data[text_col], ncols=50)]
+        data['post_body'] = preprocess(data[text_col], args.post_type)
         data = data[data['post_body'].map(lambda x: len(x) > 0)]
-        
 
-    # Remove usernames
+    # Remove usernames (separate because iterate through usernames since #usernames >> #docs)
     if args.remove_usernames:
-        data = remove_usernames_text(data)
+        print("Removing usernames...")
+        sys.stdout.flush()
+        data = remove_usernames_column(data, source=blog_names_fpath, debug=debug)
 
     # Save text file (for eg training word embeddings)
     if save_text:
