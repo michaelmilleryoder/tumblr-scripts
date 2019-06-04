@@ -171,10 +171,9 @@ def read_dir_all(posts_dirpath, debug, batch=False):
 
     for fname in tqdm(fnames, ncols=50):
         fpath = os.path.join(posts_dirpath, fname)
-        try:
-            part = pd.read_csv(fpath, sep='\t', low_memory=False)
-        except:
-            part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
+        #part = pd.read_csv(fpath, sep='\t', low_memory=False)
+        #part = pd.read_csv(fpath, sep='\t', low_memory=True)
+        part = pd.read_csv(fpath, sep='\t', engine='python', quoting=csv.QUOTE_NONE, error_bad_lines=False, warn_bad_lines=False)
         posts.extend(part.values.tolist())
 
     data = pd.DataFrame(posts, columns=part.columns)

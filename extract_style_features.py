@@ -55,13 +55,11 @@ def extract_style_features(text):
 def main():
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', nargs='?', help='Dataset name')
+    parser.add_argument('input_fpath', nargs='?', help='Filepath of pandas pickled dataframe to be processed')
     args = parser.parse_args()
 
     # I/O
-    dataset = args.dataset
-    data_dirpath = '../data'
-    posts_path = os.path.join(data_dirpath, f'{dataset}_posts.pkl')
+    posts_path = args.input_fpath
     data = pd.read_pickle(posts_path)
 
     data['style_features'] = list(map(extract_style_features, tqdm(data['post_body'])))
