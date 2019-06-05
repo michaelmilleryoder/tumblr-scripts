@@ -13,6 +13,7 @@ import csv
 import warnings
 import spacy
 from multiprocessing import Pool, Manager
+import multiprocessing
 import pdb
 import itertools
 
@@ -51,20 +52,21 @@ def find_body(post_content):
     return body
 
 
-def preprocess(column, post_type):
+def preprocess(column, post_type, lowercase=False, n_jobs=multiprocessing.cpu_count()):
     """ Takes a dataframe column, preprocesses all text """
 
-    with Pool() as p:
+    with Pool(n_jobs) as p:
         params = list(zip(column,
-			    itertools.repeat(post_type),
-				))
+                itertools.repeat(post_type),
+                itertools.repeat(lowercase),
+                ))
         processed = list(tqdm(p.imap(preprocess_post_content, params), total=len(column), ncols=70))
 
     return processed
 
 def preprocess_post_content(params):
 
-    text, post_type = params
+    text, post_type, lowercase = params
 
     if not isinstance(text, str):
         return ''
@@ -73,12 +75,14 @@ def preprocess_post_content(params):
     if post_type == 'text':
         text = find_body(text)
         if text == '': return text
-	    
+        
     # Strip html tags
     nohtml = strip_tags(text)
     
     # Tokenize with spaCy
-    toks = [tok.text for tok in nlp.tokenizer(nohtml.lower())]
+    if lowercase:
+        nohtml = nohtml.lower()
+    toks = [tok.text for tok in nlp.tokenizer(nohtml)]
     
     # Remove whitespace tokens
     toks = [t for t in toks if not all(c==' ' for c in t)]
@@ -92,7 +96,7 @@ def check_username_text(name):
         present[name] = True
 
 
-def remove_usernames_text(text, blog_names, debug):
+def remove_usernames_text(text, blog_names, debug, n_jobs):
 
     #if debug:
     #    for name in tqdm(list(blog_names)[:100], ncols=50):
@@ -106,10 +110,10 @@ def remove_usernames_text(text, blog_names, debug):
     original_text = text
 
     # Check what usernames are in the text (multiprocess)
-    with Pool() as p:
+    with Pool(n_jobs) as p:
         #params = list(zip(blog_names,
-	#		    itertools.repeat(text),
-	#			))
+    #           itertools.repeat(text),
+    #           ))
         #list(tqdm(p.imap(check_username_text, params), total=len(blog_names), ncols=70))
         list(tqdm(p.imap(check_username_text, blog_names), total=len(blog_names), ncols=70))
 
@@ -120,7 +124,7 @@ def remove_usernames_text(text, blog_names, debug):
     return text
 
 
-def remove_usernames_column(data, source=None, debug=False):
+def remove_usernames_column(data, source=None, debug=False, n_jobs=multiprocessing.cpu_count()):
     """ Removes usernames, saves in separate columns.
         Args:
             source: Filepath to a line-separated list of usernames. 
@@ -147,7 +151,7 @@ def remove_usernames_column(data, source=None, debug=False):
     #data['post_body_no_blognames'] = list(map(lambda x: re.sub(p, x, ' '), tqdm(data['post_body'], ncols=50)))
     sep = ' |a|a|a|a| '
     all_text = sep.join(data['post_body'].tolist())
-    all_text_no_blog_names = remove_usernames_text(all_text, blog_names, debug)
+    all_text_no_blog_names = remove_usernames_text(all_text, blog_names, debug, n_jobs)
     if all_text_no_blog_names.count(sep) + 1 != len(data):
         pdb.set_trace()
     data['post_body_no_blognames'] = all_text_no_blog_names.split(sep)
@@ -197,6 +201,8 @@ def main():
     parser.add_argument('--post-type', dest='post_type', nargs='?', help='Post type: {text, caption}', default='text')
     #parser.add_argument('--remove-usernames', dest='remove_usernames', action='store_true')
     parser.add_argument('--remove-usernames', nargs='?', dest='remove_usernames', default=None)
+    parser.add_argument('--n_jobs', nargs='?', dest='n_jobs', type=int, default=multiprocessing.cpu_count())
+    parser.add_argument('--lower', dest='lower', help='Lowercase text', action='store_true', default=False)
     parser.add_argument('--debug', dest='debug', action='store_true')
     args = parser.parse_args()
 
@@ -262,14 +268,14 @@ def main():
     elif input_format == 'dir':
         #data['post_body'] = list(map(preprocess_post_content, tqdm(data[text_col], ncols=50)))
         #data['post_body'] = [preprocess_post_content(t, args.post_type) for t in tqdm(data[text_col], ncols=50)]
-        data['post_body'] = preprocess(data[text_col], args.post_type)
+        data['post_body'] = preprocess(data[text_col], args.post_type, lowercase=args.lower, n_jobs=args.n_jobs)
         data = data[data['post_body'].map(lambda x: len(x) > 0)]
 
     # Remove usernames (separate because iterate through usernames since #usernames >> #docs)
     if args.remove_usernames:
         print("Removing usernames...")
         sys.stdout.flush()
-        data = remove_usernames_column(data, source=blog_names_fpath, debug=debug)
+        data = remove_usernames_column(data, source=blog_names_fpath, debug=debug, n_jobs=args.n_jobs)
 
     # Save text file (for eg training word embeddings)
     if save_text:
