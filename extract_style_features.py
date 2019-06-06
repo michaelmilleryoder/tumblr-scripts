@@ -7,9 +7,15 @@ import argparse
 from emoji import UNICODE_EMOJI
 import regex
 from collections import Counter
+import re
 import pdb
 
 en_words = set(words.words())
+
+old_internet_terms = ['lol', 'ur', 'l8r', 'gr8', '2', '4', 'b4', 'teh', 'pwn',
+                        'pwned', 'wht', 'r', 'u', '*~', 'y', ':-)', ';-)',
+                        ':)', ':0', ':(', ':-(',
+                        ] # should make a class
 
 def extract_emoji(text):
     """ Return a dict with emoji and count """
@@ -25,6 +31,27 @@ def extract_emoji(text):
     counter = Counter(text_emoji + text_flags)
     
     return dict(counter)
+
+def old_internet_speak(text):
+
+    old_features = []
+
+    for t in old_internet_terms:
+        p = re.compile(r'\b{}\b'.format(re.escape(t)), re.IGNORECASE)
+        if re.search(p, text):
+            old_features.append(t)
+
+    return dict(Counter(old_features))
+
+def spaced_words(text):
+
+    p = re.compile(r'(\w\ ){3}')
+    return len(re.findall(p, text))
+    #if re.search(p, text):
+    #    return len(re.findall(p, text))
+
+    #else:
+    #    return 0
 
 def extract_style_features(text):
     
@@ -42,14 +69,15 @@ def extract_style_features(text):
     total_punctuation = 0
     for p in punctuation:
         p_count = text.count(p)
-        features[f'avg_{p}_per_word'] = p_count/n_words
+        if p_count > 0:
+            features[f'avg_{p}_per_word'] = p_count/n_words
         total_punctuation += p_count
     features['avg_punctuation'] = total_punctuation/n_words
     
     # Capitalization
     total_capitals = sum(1 for c in text if c.isupper())
     word_initial_capitals = sum(1 for w in toks if w[0].isupper())
-    features['n_capitals'] = total_capitals
+    #features['n_capitals'] = total_capitals
     features['avg_capitalized_words'] = word_initial_capitals/n_words
     features['avg_capitalized_letters'] = total_capitals/features['n_characters']
     
@@ -61,15 +89,30 @@ def extract_style_features(text):
             features[f'repeated_{char}'] = repeated_count
             total_char_repeats += repeated_count
             
-    features['total_char_repeats'] = total_char_repeats
+    features['char_repeats_per_word'] = total_char_repeats/n_words
 
     # Emoji
     for e, val in extract_emoji(text).items():
         features[f'avg_{e}_per_word'] = val/n_words
+
+    # Old internet speak
+    for f, val in old_internet_speak(text).items():
+        features[f'avg_{f}_per_word'] = val/n_words
+
+    # Space between characters
+    n_spaced = spaced_words(text)
+    if n_spaced > 0:
+        features[f'avg_spaced_words'] = n_spaced/n_words
+
+    # Other symbols
+    other_symbols = ['™']
+    for s in other_symbols:
+        if s in text:
+            features[f'avg_{s}_per_word'] = text.count(s)/n_words
     
     # Out-of-vocabulary words
-    features['n_oov'] = sum(1 for w in toks if not w in en_words)
-    features['avg_oov'] = features['n_oov']/features['n_words']
+    total_oov = sum(1 for w in toks if not w.lower() in en_words)
+    features['avg_oov_per_word'] = total_oov/n_words
 
     return features
 
