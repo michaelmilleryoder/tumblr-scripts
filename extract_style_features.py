@@ -8,6 +8,7 @@ from emoji import UNICODE_EMOJI
 import regex
 from collections import Counter
 import re
+from sklearn.feature_extraction.text import CountVectorizer
 import pdb
 
 en_words = set(words.words())
@@ -53,7 +54,31 @@ def spaced_words(text):
     #else:
     #    return 0
 
-def extract_style_features(text):
+
+def word_shapes(text):
+
+    toks = text.split()
+    n_words = len(toks)
+
+    lowercase = 0
+    uppercase = 0
+    capitalized = 0
+    studly_caps = 0
+
+    for w in toks:
+        if all([c.islower() for c in w]):
+            lowercase += 1
+        elif all([c.isupper() for c in w]):
+            uppercase += 1
+        elif w[0].isupper():
+            capitalized += 1
+        elif w[0].islower() and any([c.isupper() for c in w[1:]]):
+            studly_caps += 1
+
+    return lowercase/n_words, uppercase/n_words, capitalized/n_words, studly_caps/n_words
+
+
+def extract_style_features(text, vectorizers):
     
     features = {}
     
@@ -73,13 +98,25 @@ def extract_style_features(text):
             features[f'avg_{p}_per_word'] = p_count/n_words
         total_punctuation += p_count
     features['avg_punctuation'] = total_punctuation/n_words
+
+    ## Punctuation bigrams
+    #punc = r'|'.join(punctuation)
+    #punc_text = ' '.join(re.split(punc, text))
+    bigram_char_vectorizer = vectorizers[0]
+    bigram_counts = bigram_char_vectorizer.transform([text]).A
+    pdb.set_trace()
+    punct_bigrams = {ngram: bigram_counts[0][i]/n_words for ngram, i in bigram_char_vectorizer.vocabulary_.items() if bigram_counts[0][i] != 0}
+    features.update(punct_bigrams)
     
     # Capitalization
     total_capitals = sum(1 for c in text if c.isupper())
-    word_initial_capitals = sum(1 for w in toks if w[0].isupper())
+    #word_initial_capitals = sum(1 for w in toks if w[0].isupper())
     #features['n_capitals'] = total_capitals
-    features['avg_capitalized_words'] = word_initial_capitals/n_words
+    #features['avg_capitalized_words'] = word_initial_capitals/n_words
     features['avg_capitalized_letters'] = total_capitals/features['n_characters']
+
+    ## Word shapes
+    features['aa'], features['AA'], features['Aa'], features['aA'] = word_shapes(text)
     
     # Repeated characters
     total_char_repeats = 0
@@ -92,8 +129,12 @@ def extract_style_features(text):
     features['char_repeats_per_word'] = total_char_repeats/n_words
 
     # Emoji
+    total_emoji = 0
     for e, val in extract_emoji(text).items():
         features[f'avg_{e}_per_word'] = val/n_words
+        total_emoji += val
+
+    features['avg_emoji_per_word'] = total_emoji/n_words
 
     # Old internet speak
     for f, val in old_internet_speak(text).items():
@@ -125,9 +166,27 @@ def main():
 
     # I/O
     posts_path = args.input_fpath
+    print("Loading data...")
     data = pd.read_pickle(posts_path)
 
-    data['style_features'] = list(map(extract_style_features, tqdm(data['post_body_no_blognames'])))
+    # Build vectorizers
+    print("Building vectorizers...")
+    vectorizers = []
+
+    ## Get all punct bigrams
+    bigram_char_vectorizer = CountVectorizer(analyzer='word', ngram_range=(2,2))
+    bigram_char_vectorizer.fit(data['post_body_no_blognames'])
+    punct_bigrams = [ngram for ngram in bigram_char_vectorizer.vocabulary_ if all(w == ' ' or w in punctuation for w in ngram)]
+
+    bigram_char_vectorizer = CountVectorizer(analyzer='word', ngram_range=(2,2), vocabulary=punct_bigrams)
+    bigram_char_vectorizer._validate_vocabulary()
+    
+    vectorizers.append(bigram_char_vectorizer)
+
+    # Extracting style features
+    #data['style_features'] = list(map(extract_style_features, tqdm(data['post_body_no_blognames'])))
+    print("Extracting features...")
+    data['style_features'] = [extract_style_features(text, vectorizers) for text in tqdm(data['post_body_no_blognames'].tolist())]
     data.to_pickle(posts_path)
 
 if __name__ == '__main__':

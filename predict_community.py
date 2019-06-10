@@ -48,7 +48,7 @@ def main():
 
         if args.unigrams_fs:
             print('Selecting top word features...')
-            selector = SelectKBest(chi2, k=args.unigram_fs).fit(words_train, y_train)
+            selector = SelectKBest(chi2, k=args.unigrams_fs).fit(words_train, y_train)
             words_train = selector.transform(words_train)
             words_test = selector.transform(words_test)
             
@@ -77,7 +77,7 @@ def main():
     print(f'Mean accuracy over classes: {clf.score(X_test, y_test)}') # mean accuracy for just style features; majority class is 10%
 
     # Save classifier
-    if args.unigram_fs:
+    if args.unigrams_fs:
         outpath = f'/mnt/interns/myoder/models/community_lr_{"_".join(features)}_{args.unigram_fs}.pkl'
     else:
         outpath = f'/mnt/interns/myoder/models/community_lr_{"_".join(features)}.pkl'
