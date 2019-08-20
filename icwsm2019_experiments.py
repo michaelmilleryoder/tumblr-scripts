@@ -419,6 +419,8 @@ def get_informative_features(features_vectorizer, model, model_name, data_dirpat
     with open(outpath, 'w') as f:
         for l in lines:
             f.write(f'{l}\n')
+    
+    print(f"\nSaved informative features to {outpath}")
 
 
 def extract_features(feature_sets, instances, instance_labels, identity_categories, remove_zeros=False, initialization=None, categories=['all'], model_name=None, data_dirpath=None, save=False, extras=[]):
