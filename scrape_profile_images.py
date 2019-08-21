@@ -13,11 +13,11 @@ def main():
 
     # I/O
     blognames_path = '/usr0/home/mamille2/new_home/tumblr/icwsm2020/icwsm2020_blogs_1m.csv'
-    out_image_dirpath = '/usr0/home/mamille2/new_home/tumblr/icwsm2020/nondefault_sample1m'
+    out_image_dirpath = '/data/icwsm2020_tumblr_identity/profile_images/nondefault_sample1m'
     if not os.path.exists(out_image_dirpath):
         os.mkdir(out_image_dirpath)
     out_imagepath = os.path.join(out_image_dirpath, '{:03}.png')
-    out_infopath = '/usr0/home/mamille2/new_home/tumblr/icwsm2020/scrape_info_{}.txt'
+    out_infopath = '/projects/icwsm2020_tumblr_identity/output/scrape_info_{}.txt'
 
     # OAuth
     with open('../oauth.txt') as f:
@@ -89,16 +89,16 @@ def main():
 
     # Save out info on the run
     with open(out_infopath.format(datetime.now().strftime("%Y-%m-%dT%H$M")), 'w') as f:
-        f.write(f'Outpath: {out_imagepath}')
-        f.write(f'Number of profile images scraped: {count_successful}')
-        f.write(f'Number of profile images rejected: {num_rejected}')
-        f.write(f'Number with default images: {len(blognames_with_default_images)}')
-        f.write(f'Number with other images: {len(blognames_with_images)}')
-        f.write("Blog names with default images:")
+        f.write(f'Outpath: {out_imagepath}\n')
+        f.write(f'Number of profile images scraped: {count_successful}\n')
+        f.write(f'Number of profile images rejected: {num_rejected}\n')
+        f.write(f'Number with default images: {len(blognames_with_default_images)}\n')
+        f.write(f'Number with other images: {len(blognames_with_images)}\n\n')
+        f.write("Blog names with default images:\n")
         for name in blognames_with_default_images:
             f.write(f'{name}\n')
         f.write("\n")
-        f.write("Blog names with other images:")
+        f.write("Blog names with other images:\n")
         for name in blognames_with_images:
             f.write(f'{name}\n')
 
