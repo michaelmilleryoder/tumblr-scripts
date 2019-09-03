@@ -136,7 +136,7 @@ def main():
             print(e)
             save_output(out_infopath, out_imagepath, i, count_successful, num_rejected, blognames_with_default_images, blognames_with_images)
 
-    save_output(out_infopath, out_imagepath, count_successful, num_rejected, blognames_with_default_images, blognames_with_images)
+    save_output(out_infopath, out_imagepath, i, count_successful, num_rejected, blognames_with_default_images, blognames_with_images)
 
 
 if __name__ == '__main__':
