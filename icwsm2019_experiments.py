@@ -410,6 +410,9 @@ def get_informative_features(features_vectorizer, model, model_name, data_dirpat
     lines = list(reversed(sorted(lines, key=itemgetter(3))))
 
     # Save out
+    if not os.path.exists(os.path.join(data_dirpath, 'output', 'informative_features')):
+        os.mkdir(os.path.join(data_dirpath, 'output', 'informative_features'))
+
     outpath = os.path.join(data_dirpath, 'output', 'informative_features', f'{model_name.replace("/", "_").replace(" ", "_")}_informative_features_nontag.txt')
     with open(outpath, 'w') as f:
         for l in nontag_lines:
@@ -499,12 +502,16 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
     # Save feature vectorizer for error analysis
     if data_dirpath and model_name:
         outpath = os.path.join(data_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
+        if not os.path.exists(os.path.join(data_dirpath, 'output', 'feature_vectorizers')):
+            os.mkdir(os.path.join(data_dirpath, 'output', 'feature_vectorizers'))
         with open(outpath, 'wb') as f:
             pickle.dump(features_vectorizer, f)
 
     # Save features
     if save and data_dirpath and model_name:
         outpath = os.path.join(data_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
+        if not os.path.exists(os.path.join(data_dirpath, 'output', 'feature_vectorizers')):
+            os.mkdir(os.path.join(data_dirpath, 'output', 'feature_vectorizers'))
         with open(outpath, 'wb') as f:
             pickle.dump((X_train, y_train, X_test, y_test), f)
         
@@ -529,6 +536,8 @@ def run_model(model_name, clf, X_train, y_train, X_test, y_test, data_dirpath):
     model_pred = model.predict(X_test)
 
     # Save predictions
+    if not os.path.exists(os.path.join(data_dirpath, 'output', 'predictions')):
+        os.mkdir(os.path.join(data_dirpath, 'output', 'predictions'))
     np.savetxt(os.path.join(data_dirpath, 'output', 'predictions', f'{model_name.replace("/", "_").replace(" ", "_")}_test_preds.txt'), model_pred)
     np.savetxt(os.path.join(data_dirpath, 'output', 'predictions', f'{model_name.replace("/", "_").replace(" ", "_")}_train_preds.txt'), train_pred)
 
@@ -548,7 +557,7 @@ def main():
     parser.add_argument('--baseline', dest='baseline', action='store_true', help='Run only baseline')
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
     parser.add_argument('--name', dest='model_name', nargs='?', help='model name base, None just puts classifier and features', default=None)
-    parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='dirpath; default /usr2/mamille2/tumblr/data/sample1k', default='/usr2/mamille2/tumblr/data/sample1k')
+    parser.add_argument('--dirpath', dest='data_dirpath', nargs='?', help='dirpath; default /data/icwsm2020_tumblr_identity/sample1k', default='/data/icwsm2020_tumblr_identity/sample1k')
     parser.add_argument('--categories', dest='categories', nargs='?', help='default all single categories + all together', default='all+all')
     parser.set_defaults(remove_zeros=False)
     parser.set_defaults(experiment1=False)
@@ -573,7 +582,8 @@ def main():
     print()
 
     identity_categories = ['age', 'ethnicity/nationality', 'fandoms', 'gender',
-                           'interests', 'location', 'personality type', 'pronouns', 'relationship status', 'roleplay',
+                           'interests', 'location', 'personality type', 'pronouns', 'relationship status', 
+                            #'roleplay',
                            'sexual orientation', 'zodiac']
 
     # ### Create category label vocabulary
@@ -614,7 +624,8 @@ def main():
     # Run experiments
     else:
         # Load baseline predictions
-        baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'{args.classifier_type}_baseline_test_preds.txt'))
+        #baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', f'{args.classifier_type}_baseline_test_preds.txt'))
+        baseline_preds = np.loadtxt(os.path.join(data_dirpath, 'output', 'predictions', 'all_no_roleplay_baseline_lr_test_preds.txt'))
 
         experiments = []
         if args.experiment1:
