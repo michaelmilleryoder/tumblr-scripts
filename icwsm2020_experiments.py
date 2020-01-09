@@ -20,14 +20,17 @@ from scipy.sparse import vstack
 
 """
 
-This script contains code for experiments predicting Tumblr reblog behavior (content propagation) from post content and identity features of users.
+This script contains code for experiments predicting Tumblr reblog behavior (content propagation) from post content 
+and identity features of users.
 
 This includes:
 * Feature extraction
     * baseline features from post content: hashtags, post like count, post media type
-    * identity features: configurations of matches and mismatches from self-presented identity labels between users who may or may not reblog each others' posts
+    * identity features: configurations of matches and mismatches from self-presented identity labels between users 
+        who may or may not reblog each others' posts
 * Experiments 
-    * learning-to-rank machine learning formulation with pairs of users who did share a post and pairs who did not (the predicted outcome measure)
+    * learning-to-rank machine learning formulation with pairs of users who did share a post and pairs who did not 
+        (the predicted outcome measure)
     * machine learning models from scikit-learn: logistic regression, SVM, feedforward neural network
 
 Entrance point: main function.
