@@ -18,11 +18,9 @@ import copy
 from operator import itemgetter
 from scipy.sparse import vstack
 
-from get_themes import get_themes
-
 """
 
-This script contains code for experiments predicting Tumblr reblog behavior from post content and identity features of users.
+This script contains code for experiments predicting Tumblr reblog behavior (content propagation) from post content and identity features of users.
 
 This includes:
 * Feature extraction
@@ -36,60 +34,11 @@ Entrance point: main function.
 
 """
 
-def variance_analysis(instances, identity_categories):
-    """ Returns: category_user_remove, a hashmap of a set of users who have zero presence of the category and all their followees also have zero presence of the category """
-
-    follower_category_variance = defaultdict(lambda: defaultdict(lambda: []))
-    follower_followee_counted = defaultdict(lambda: set())
-
-    def _variance_analysis(candidate, follower_category_variance):
-        """ Build follower_category_variance hashmap """
-        follower_id = candidate['tumblog_id_follower']
-
-        for identity_category in identity_categories:
-            # Do not consider for remove list if follower has cateogry presence
-            identity_category_follower = eval(candidate[identity_category + '_terms_follower'])
-            follower_presence = len(identity_category_follower) > 0
-            if follower_presence: continue
-
-            identity_category_followee = eval(candidate[identity_category + '_terms_followee'])
-            followee_presence = len(identity_category_followee) > 0
-
-            if followee_presence:
-                follower_category_variance[identity_category][follower_id].append(1)
-            else:
-                follower_category_variance[identity_category][follower_id].append(0)
-
-    for reblog_candidate, nonreblog_candidate in instances:
-        follower_id = reblog_candidate['tumblog_id_follower']
-        followee_id_1 = reblog_candidate['tumblog_id_followee']
-
-        if not followee_id_1 in follower_followee_counted[follower_id]:
-            _variance_analysis(reblog_candidate, follower_category_variance)
-            follower_followee_counted[follower_id].add(followee_id_1)
-        
-        followee_id_2 = nonreblog_candidate['tumblog_id_followee']        
-        if not followee_id_2 in follower_followee_counted[follower_id]:
-            _variance_analysis(nonreblog_candidate, follower_category_variance)
-            follower_followee_counted[follower_id].add(followee_id_2)
-
-    #category_variance = defaultdict(lambda: [])
-    category_user_remove = defaultdict(lambda: set())
-    for identity_category in follower_category_variance:
-        for follower_id in follower_category_variance[identity_category]:
-            #var = np.var(follower_category_variance[identity_category][follower_id])
-            all_zeros = all(p == 0 for p in follower_category_variance[identity_category][follower_id])
-            #if var == 0:
-            if all_zeros:
-                category_user_remove[identity_category].add(follower_id)
-            #category_variance[identity_category].append(var)
-    
-    return category_user_remove
-
 
 def run_mcnemar(baseline_pred, experiment_pred, y_test):
-    # # McNemar's Test (Significance)
-    # In[ ]:
+    """ McNemar's Test (Significance) 
+    """
+
     a = 0
     b = 0 # Baseline correct, experiment incorrect
     c = 0 # Baseline incorrect, experiment correct
@@ -123,11 +72,12 @@ def run_mcnemar(baseline_pred, experiment_pred, y_test):
 
 
 def _str2list(in_str):
+    """ Utility function """
     return [el[1:-1] for el in in_str[1:-1].split(', ')]
 
 
-def update_tag_counts(tag_counts, counted_ids, candidate): # for hashtags
-#     candidate_tags = [tag.lower() for tag in eval(candidate['post_tags'])] # uses tokens provided in feature tables
+def update_tag_counts(tag_counts, counted_ids, candidate):
+    """ Update hashtag count for posts """
     candidate_tags = [tag.lower() for tag in _str2list(candidate['post_tags'])] # uses tokens provided in feature tables
     followee_id = candidate['tumblog_id_followee']    
     for tag in candidate_tags:
@@ -137,6 +87,7 @@ def update_tag_counts(tag_counts, counted_ids, candidate): # for hashtags
 
 
 def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
+    """ Extract baseline features from Tumblr posts """
     ### Post baseline
     features = defaultdict(float) # {feat: count} for each instance
     tag_vocab = extras[0]
@@ -171,7 +122,9 @@ def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label,
 
 
 def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
-    # Experiment 1 - Identity framing, presence of variables
+    """ Extract features for experiment 1: identity category features 
+        (such as whether one or both users being compared presents age, gender, etc) """
+
     features = defaultdict(float)
 
     # Follower-followee comparison space features
@@ -232,6 +185,9 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
 
                 
 def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
+    """ Extract features for experiment 2: identity label features 
+        (individual labels within categories of age, gender, etc) """
+
     features = defaultdict(float)
 
     category_vocabs = extras[1]
@@ -297,6 +253,7 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
 
 
 def load_data(features_dir, filenames, fpath=None):
+    """ Load or merge the input user data and Tumblr posts """
 
     # if fpath exists, will load from there
     if fpath is not None and os.path.exists(fpath):
@@ -325,6 +282,7 @@ def load_data(features_dir, filenames, fpath=None):
 
 
 def get_tag_vocab(instances, fpath):
+    """ Build the hashtag vocab. """
 
     if os.path.exists(fpath):
         with open(fpath, 'rb') as f:
@@ -347,6 +305,7 @@ def get_tag_vocab(instances, fpath):
 
 
 def get_category_vocabs(instances, categories, fpath):
+    """ Build the category vocab. """
 
     if os.path.exists(fpath):
         with open(fpath, 'rb') as f:
@@ -394,6 +353,8 @@ def get_category_vocabs(instances, categories, fpath):
     return category_vocabs
 
 def get_informative_features(features_vectorizer, model, model_name, output_dirpath, n=10000):
+    """ Examine informative features from machine learning models. """
+
     feats_index2name = {v: k for k, v in features_vectorizer.vocabulary_.items()}
     feature_weights = model.coef_[0]
     
@@ -401,10 +362,6 @@ def get_informative_features(features_vectorizer, model, model_name, output_dirp
     top_weights = np.sort(feature_weights)[-1*n:]
     bottom_indices = np.argsort(feature_weights)[:n]
     bottom_weights = np.sort(feature_weights)[:n]
-    #tb_weights = sorted(np.hstack([top_weights, bottom_weights], key=lambda row: np.abs(row)))
-    
-#     bottom_feats = set(feats_index2name[j] for j in bottom_indices)
-#     top_feats = set(feats_index2name[j] for j in bottom_indices)
 
     nontag_lines = [] # to sort and print
     lines = [] # to sort and print
@@ -413,7 +370,6 @@ def get_informative_features(features_vectorizer, model, model_name, output_dirp
         feature_name = feats_index2name[j]
         if not feature_name.startswith('tag'):
             nontag_lines.append([i, feature_name, w, abs(w)])
-#             print(f"{i}\t{feature_name}\t{w: .3f}")
         lines.append([i, feature_name, w, abs(w)])
             
     for i, (j, w) in enumerate(zip(bottom_indices, bottom_weights)):
@@ -444,7 +400,10 @@ def get_informative_features(features_vectorizer, model, model_name, output_dirp
 
 
 def extract_features(feature_sets, instances, instance_labels, identity_categories, remove_zeros=False, initialization=None, categories=['all'], model_name=None, output_dirpath=None, save=False, extras=[]):
-    """ Args:
+    """ 
+        Main feature extraction function that selects utility feature extractors.
+    
+        Args:
             remove_zeros: whether or not to remove instances where the follower and all of their followees do not give the category
     """
     # Try loading data
@@ -572,6 +531,7 @@ def run_model(model_name, clf, X_train, y_train, X_test, y_test, output_dirpath)
 
 def main():
 
+    # Command-line arguments
     parser = argparse.ArgumentParser(description='Extract features and run models')
     parser.add_argument('--remove-zeros', dest='remove_zeros', action='store_true')
     parser.add_argument('--experiment1', dest='experiment1', action='store_true')
@@ -613,7 +573,6 @@ def main():
 
     # ### Create category label vocabulary
     category_vocabs = get_category_vocabs(instances, identity_categories, os.path.join(data_dirpath, 'processed_data', 'category_vocab.pkl'))
-    themes = get_themes(category_vocabs) 
 
     # Classifier definitions
     classifiers = {
