@@ -30,23 +30,26 @@ def save_output(out_infopath, out_imagepath, num_attempted, count_successful, nu
 def main():
 
     # I/O
-    blognames_path = '/data/icwsm2020_tumblr_identity/icwsm2020_blogs_1m.csv'
+    blognames_path = '/data/websci2020_tumblr_identity/icwsm2020_sample1k/blog_names.txt'
     #blognames_path = '/data/icwsm2020_tumblr_identity/test_set_blog_names.txt'
     #out_image_dirpath = '/data/icwsm2020_tumblr_identity/profile_images/test_set'
-    out_image_dirpath = '/data/icwsm2020_tumblr_identity/profile_images/nondefault_sample1m'
+    out_image_dirpath = '/data/websci2020_tumblr_identity/profile_images/icwsm2020_sample1k_nondefault'
     if not os.path.exists(out_image_dirpath):
         os.mkdir(out_image_dirpath)
     out_image_subdir = os.path.join(out_image_dirpath, '{}')
-    #out_imagepath = os.path.join(out_image_subdir, '{:06d}.png')
     out_imagepath = os.path.join(out_image_subdir, '{}.png')
-    out_infopath = '/projects/icwsm2020_tumblr_identity/logs/scrape_info_{}.txt'
+    out_infopath = '/projects/websci2020_tumblr_identity/logs/scrape_info_{}.txt'
+
+    # Settings
+    num_lines = None # numeric limit if want to, put None if not
+    offset = 0 # already done
+    offset_successful = 0
 
     # OAuth
     with open('../oauth.txt') as f:
         lines = f.read().splitlines()
         
     client = pytumblr.TumblrRestClient(lines[0], lines[1], lines[2], lines[3])
-
 
     # Load selected blog names
     print("Loading blog names...")
@@ -58,27 +61,20 @@ def main():
         with open(blognames_path) as f:
             blognames = f.read().splitlines()
 
-    # Random selection of blognames (if already unique)
-    num_lines = 1000000
-    #offset = 10000 # already done
-    offset = 231174
-    #offset_successful = 7040
-    offset_successful = 0
     selection = [b for b in blognames if isinstance(b, str)][offset:num_lines]
     print(f"Found {len(selection)} blog names\n")
 
     # Scrape images
     print("Scraping images...")
+    max_num = len(selection)
     count_successful = 0
-    max_num = 1000000
     blognames_with_default_images = []
     blognames_with_images = []
     num_blognames_with_images = 0
     num_rejected = 0
 
-    #pbar = tqdm(total=max_num)
+    pbar = tqdm(total=max_num)
     #pbar = tqdm(total=int(.71*num_lines))
-    pbar = tqdm(total=len(selection))
 
     for i, blogname in enumerate(selection):
         if count_successful >= max_num:
@@ -108,10 +104,11 @@ def main():
                     r = urllib.request.urlopen(avatar_url).read()
                     #with open(out_imagepath.format(count_successful), 'wb') as f:
                     #with open(out_imagepath.format(offset_successful + num_blognames_with_images), 'wb') as f:
-                    out_dirpath = out_image_subdir.format(blogname[:2])
+                    out_dirpath = out_image_subdir.format(blogname[:2]) # subdir first 2 chars of blogname
                     if not os.path.exists(out_dirpath):
                         os.mkdir(out_dirpath)
-                    with open(os.path.join(out_dirpath, blogname), 'wb') as f:
+                    outpath = out_imagepath.format(blogname[:2], blogname)
+                    with open(outpath, 'wb') as f: # actual saving of the image
                         f.write(r)
 
                 tqdm.write(f"{i} blogs attempted")
@@ -124,7 +121,7 @@ def main():
                 tqdm.write(f"{num_rejected} rejected\n")
 
             pbar.update(1)
-            #time.sleep(.1)
+            time.sleep(.1)
 
         except urllib.error.HTTPError as e:
             print(e)
