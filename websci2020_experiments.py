@@ -221,13 +221,6 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
             # AND
             features[f'cat={identity_category},aligned_label'] += intersection * incr
 
-            # Theme interaction features
-            #for follower_theme in follower_themes:
-            #    for followee_theme in followee_themes:
-
-            #        feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
-            #        features[feat_tag] += incr
-
             # Label interaction features
             for identity_label_follower in identity_category_follower:
                 for identity_label_followee in identity_category_followee:
@@ -557,10 +550,10 @@ def main():
     parser.add_argument('--baseline-preds', dest='baseline_preds_name', nargs='?', help='Name of baseline prediction file in <output_dirpath>/output/predictions; default baseline_lr_test_preds.txt', default='baseline_lr_test_preds.txt')
     parser.add_argument('--no-significance', dest='no_significance_test', action='store_true', help="Don't do a significance test over a baseline")
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
-    parser.add_argument('--name', dest='model_name', nargs='?', help='model name base, None just puts classifier and features', default=None)
+    parser.add_argument('--name', dest='model_name', nargs='?', help='model name base, automatically appends experiment features and classifier, None just puts classifier and features', default=None)
     parser.add_argument('--data-dirpath', dest='data_dirpath', nargs='?', help='data dirpath; default /data/websci2020_tumblr_identity/icwsm2020_sample1k', default='/data/websci2020_tumblr_identity/icwsm2020_sample1k')
     parser.add_argument('--test-dirpath', dest='test_dirpath', nargs='?', help='test dirpath if provided; if None (default) then does a random 10% split', default=None)
-    parser.add_argument('--output-dirpath', dest='output_dirpath', nargs='?', help='output dirpath; default /projects/websci20200_tumblr_identity', default='/projects/websci2020_tumblr_identity')
+    parser.add_argument('--output-dirpath', dest='output_dirpath', nargs='?', help='output dirpath; default /projects/websci2020_tumblr_identity', default='/projects/websci2020_tumblr_identity')
     parser.add_argument('--categories', dest='categories', nargs='?', help='default all single categories + all together', default='all+all')
     parser.set_defaults(remove_zeros=False)
     parser.set_defaults(experiment1=False)
@@ -602,7 +595,7 @@ def main():
 
     # Classifier definitions
     classifiers = {
-        'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=10000, verbose=2),
+        'lr': linear_model.LogisticRegressionCV(cv=10, n_jobs=10, max_iter=10000, verbose=0),
         'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=0), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=2),
         'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True, verbose=2)
     }
@@ -691,7 +684,7 @@ def main():
 
             clf = classifiers[args.classifier_type]
             model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, output_dirpath)
-            print(f'{model_name} score: {score: .4f}')
+            print(f'\n{model_name} score: {score: .4f}\n')
 
 
             # Significance test
