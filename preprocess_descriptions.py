@@ -10,15 +10,15 @@ from multiprocessing import Pool
 import pickle
 import warnings
 import pdb
+import nltk
 
-def load_data(desc_fpath):
+
+def load_data(desc_fpath, sep='\t')
     tqdm.write("Loading data...")
     sys.stdout.flush()
     
-    if desc_fpath.endswith('.csv'):
-        desc_data = pd.read_csv(desc_fpath)
-    elif desc_fpath.endswith('.tsv'):
-        desc_data = pd.read_csv(desc_fpath, sep='\t')
+    if desc_fpath.endswith('.csv') or desc_fpath.endswith('.tsv'):
+        desc_data = pd.read_csv(desc_fpath, sep=sep, escapechar='\\')
     elif desc_fpath.endswith('.pkl'):
         desc_data = pd.read_pickle(desc_fpath)
     else:
@@ -89,6 +89,9 @@ def process_dates(desc):
 def process_date(datestr):
     return datestr.replace('/', '-').replace('.', '-')
 
+def tokenize(text):
+    return ' '.join([tok.lower() for tok in nltk.word_tokenize(str(text))])
+
 def preprocess(desc_data, desc_colname):
     # Remove HTML tags
     tqdm.write("Removing HTML tags...")
@@ -100,6 +103,10 @@ def preprocess(desc_data, desc_colname):
             warnings.simplefilter('ignore')
             #desc_data[new_colname] = list(map(strip_tags, tqdm(desc_data[desc_colname].tolist())))
             desc_data[new_colname] = list(pool.map(strip_tags, desc_data[desc_colname].tolist()))
+
+    # Tokenize
+    print('Tokenizing...')
+    desc_data[new_colname] = [tokenize(d) for d in tqdm(desc_data[new_colname].tolist())]
 
     # Remove empty parsed blogs
     desc_data = desc_data[desc_data[new_colname].map(lambda x: len(x) > 0)]
@@ -237,43 +244,58 @@ def main():
     # Settings
     char_limit = 25
 
-    # I/O
+    # Folder input I/O
     #data_dirpath = '/usr0/home/mamille2/tumblr/data' 
     #data_dirpath = '/usr2/mamille2/tumblr/data' 
     #data_dirpath = '/usr0/home/mamille2/erebor/tumblr/data/sample200/' 
-    data_dirpath = '/usr2/mamille2/tumblr/data/sample1k/' 
-    in_dirpath = os.path.join(data_dirpath, 'reblogs_descs_nodups')
-    out_dirpath = os.path.join(data_dirpath, 'reblogs_descs_preprocessed')
-    if not os.path.exists(out_dirpath):
-        os.mkdir(out_dirpath)
-    #desc_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
-    #desc_fpath = os.path.join(data_dirpath, 'reblogs_descs.tsv')
-    desc_fnames = sorted(os.listdir(in_dirpath))
-    #list_desc_fpath = os.path.join(data_dirpath, f'bootstrapped_list_descriptions_recent100_restr{char_limit}.pkl')
-    #sep_chars_fpath = os.path.join(data_dirpath, "common_sep_chars.pkl")
+    #data_dirpath = '/usr2/mamille2/tumblr/data/sample1k/' 
+    #in_dirpath = os.path.join(data_dirpath, 'reblogs_descs_nodups')
+    #out_dirpath = os.path.join(data_dirpath, 'reblogs_descs_preprocessed')
+    #if not os.path.exists(out_dirpath):
+    #    os.mkdir(out_dirpath)
+    ##desc_fpath = os.path.join(data_dirpath, 'blog_descriptions_recent100.pkl')
+    ##desc_fpath = os.path.join(data_dirpath, 'reblogs_descs.tsv')
+    #desc_fnames = sorted(os.listdir(in_dirpath))
+    ##list_desc_fpath = os.path.join(data_dirpath, f'bootstrapped_list_descriptions_recent100_restr{char_limit}.pkl')
+    ##sep_chars_fpath = os.path.join(data_dirpath, "common_sep_chars.pkl")
+    ##desc_colnames = ['blog_description_follower', 'blog_description_followee']    
+    #desc_colnames = ['tumblr_blog_description']    
 
-    desc_colnames = ['blog_description_follower', 'blog_description_followee']    
+    #for desc_fname in tqdm(desc_fnames, ncols=50):
+    #    desc_fpath = os.path.join(in_dirpath, desc_fname)
+    #    out_fpath = os.path.join(out_dirpath, desc_fname)
 
-    for desc_fname in tqdm(desc_fnames, ncols=50):
-        desc_fpath = os.path.join(in_dirpath, desc_fname)
-        out_fpath = os.path.join(out_dirpath, desc_fname)
+    #    # Load data
+    #    #descs, preprocessed = load_data(desc_fpath)
+    #    descs = load_data(desc_fpath)
+    #    if len(descs) == 0:
+    #        continue
 
-        # Load data
-        #descs, preprocessed = load_data(desc_fpath)
-        descs = load_data(desc_fpath)
-        if len(descs) == 0:
-            continue
+    #    #if not preprocessed:
+    #    #    descs = preprocess(descs)
 
-        #if not preprocessed:
-        #    descs = preprocess(descs)
+    #    for desc_colname in desc_colnames:
+    #        descs = preprocess(descs, desc_colname)
 
-        for desc_colname in desc_colnames:
-            descs = preprocess(descs, desc_colname)
+    #    # Save data
+    #    save(descs, out_fpath)
 
-        # Save data
-        save(descs, out_fpath)
+    #    #list_descs = list_descriptions(descs, sep_chars_fpath, char_limit, list_desc_fpath)
 
-        #list_descs = list_descriptions(descs, sep_chars_fpath, char_limit, list_desc_fpath)
+    # File input I/O
+    desc_fpath = '/data/tumblr_community_identity/dataset1114k/blog_info_dataset114k.csv'
+    out_fpath = desc_fpath[:-4] + '_processed.csv'
+    desc_colnames = ['tumblr_blog_description']    
+
+    # Load data
+    descs = load_data(desc_fpath)
+    for desc_colname in desc_colnames:
+        descs = preprocess(descs, desc_colname)
+
+    # Save data
+    save(descs, out_fpath)
+
+    #list_descs = list_descriptions(descs, sep_chars_fpath, char_limit, list_desc_fpath)
 
     tqdm.write("FINISHED PREPROCESSING")
 

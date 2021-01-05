@@ -20,16 +20,16 @@ from scipy.sparse import vstack
 
 """
 
-This script contains code for experiments predicting Tumblr reblog behavior (content propagation) from post content
+This script contains code for experiments predicting Tumblr reblog behavior (content propagation) from post content 
 and identity features of users.
 
 This includes:
 * Feature extraction
     * baseline features from post content: hashtags, post like count, post media type
-    * identity features: configurations of matches and mismatches from self-presented identity labels between users
+    * identity features: configurations of matches and mismatches from self-presented identity labels between users 
         who may or may not reblog each others' posts
-* Experiments
-    * learning-to-rank machine learning formulation with pairs of users who did share a post and pairs who did not
+* Experiments 
+    * learning-to-rank machine learning formulation with pairs of users who did share a post and pairs who did not 
         (the predicted outcome measure)
     * machine learning models from scikit-learn: logistic regression, SVM, feedforward neural network
 
@@ -37,12 +37,9 @@ Entrance point: main function.
 
 """
 
-global img_dirpath
-global loaded_imgs
-loaded_imgs = dict()
 
 def run_mcnemar(baseline_pred, experiment_pred, y_test):
-    """ McNemar's Test (Significance)
+    """ McNemar's Test (Significance) 
     """
 
     a = 0
@@ -58,7 +55,7 @@ def run_mcnemar(baseline_pred, experiment_pred, y_test):
             c += 1
         else:
             d += 1
-
+            
     table = [[a, b],
              [c, d]]
 
@@ -73,7 +70,7 @@ def run_mcnemar(baseline_pred, experiment_pred, y_test):
             print('Same proportions of errors (fail to reject H0)')
     else:
             print('Different proportions of errors (reject H0)')
-
+    
     return result
 
 
@@ -85,7 +82,7 @@ def _str2list(in_str):
 def update_tag_counts(tag_counts, counted_ids, candidate):
     """ Update hashtag count for posts """
     candidate_tags = [tag.lower() for tag in _str2list(candidate['post_tags'])] # uses tokens provided in feature tables
-    followee_id = candidate['tumblog_id_followee']
+    followee_id = candidate['tumblog_id_followee']    
     for tag in candidate_tags:
         if not followee_id in counted_ids[tag]: # only counts the tag if user hasn't already used the tag
             tag_counts[tag] += 1
@@ -99,7 +96,10 @@ def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label,
     tag_vocab = extras[0]
 
     def _extract_features_post_baseline_candidate(candidate, incr):
-        candidate_tags = [tag.lower() for tag in eval(candidate['post_tags'])]
+        try:
+            candidate_tags = [tag.lower() for tag in eval(candidate['post_tags'])]
+        except:
+            pdb.set_trace()
         for tag in candidate_tags:
             if tag.lower() in tag_vocab:
                 feat_tag = ('tag=%s' % tag.lower())
@@ -108,16 +108,16 @@ def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label,
         post_type = candidate['post_type']
         feat_tag = ('post_type=%s' % post_type)
         features[feat_tag] += incr
-
+        
         try:
             post_note_count = float(candidate['post_note_count'])
         except ValueError as e:
             post_note_count = 0.0
-
+            
         features['post_note_count'] += incr * post_note_count
+        
 
-
-    if label == 1:
+    if label == 1: 
         _extract_features_post_baseline_candidate(nonreblog_candidate, incr=-1)
         _extract_features_post_baseline_candidate(reblog_candidate, incr=1)
     else:
@@ -128,7 +128,7 @@ def extract_features_post_baseline(reblog_candidate, nonreblog_candidate, label,
 
 
 def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
-    """ Extract features for experiment 1: identity category features
+    """ Extract features for experiment 1: identity category features 
         (such as whether one or both users being compared presents age, gender, etc) """
 
     features = defaultdict(float)
@@ -136,11 +136,11 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
 
     # Follower-followee comparison space features
     def _extract_features_experiment_1_candidate(candidate, incr):
-
+        
         num_matches = 0
         num_mismatched_follower_presents = 0
         num_mismatched_followee_presents = 0
-
+        
         for identity_category in categories:
             identity_category_follower = eval(candidate[identity_category + '_terms_follower'])
             follower_presence = len(identity_category_follower) > 0
@@ -158,7 +158,7 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
                 feat_tag = ('aligned_cat=%s' % identity_category)
                 features[feat_tag] += incr
                 num_matches += 1
-
+                
             # XOR
             if (follower_presence and not followee_presence):
                 feat_tag = ('mismatched_follower_presents_cat=%s' % identity_category)
@@ -172,14 +172,14 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
                 feat_tag = ('xor_cat=%s' % identity_category)
                 features[feat_tag] += incr
                 num_mismatched_followee_presents += 1
-
+                
         # Number of matches
         if len(categories) > 1:
             features['num_matches'] += num_matches * incr
             features['num_mismatched_follower_presents'] += num_mismatched_follower_presents * incr
             features['num_mismatched_followee_presents'] += num_mismatched_followee_presents * incr
-
-
+    
+            
     # Candidate comparison space
     if label == 1:
         _extract_features_experiment_1_candidate(nonreblog_candidate, incr=-1)
@@ -190,15 +190,14 @@ def extract_features_experiment_1(reblog_candidate, nonreblog_candidate, label, 
 
     return features
 
-
+                
 def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
-    """ Extract features for experiment 2: identity label features
+    """ Extract features for experiment 2: identity label features 
         (individual labels within categories of age, gender, etc) """
 
     features = defaultdict(float)
 
     category_vocabs = extras[1]
-#    themes = extras[2]
 
     def _extract_features_experiment_2_candidate(candidate, incr):
 
@@ -225,13 +224,6 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
             # AND
             features[f'cat={identity_category},aligned_label'] += intersection * incr
 
-            # Theme interaction features
-            #for follower_theme in follower_themes:
-            #    for followee_theme in followee_themes:
-
-            #        feat_tag = ('cat=%s,follower_theme=%s,followee_theme=%s' % (identity_category, follower_theme, followee_theme))
-            #        features[feat_tag] += incr
-
             # Label interaction features
             for identity_label_follower in identity_category_follower:
                 for identity_label_followee in identity_category_followee:
@@ -245,74 +237,11 @@ def extract_features_experiment_2(reblog_candidate, nonreblog_candidate, label, 
     else:
         _extract_features_experiment_2_candidate(reblog_candidate, incr=-1)
         _extract_features_experiment_2_candidate(nonreblog_candidate, incr=1)
-    return features
-
-
-def extract_features_experiment_3(reblog_candidate, nonreblog_candidate, label, categories=[], extras=[]):
-    """ Extract features for experiment 3: profile images """
-
-    features = defaultdict(float)
-
-
-    # Follower-followee comparison space features
-    def _extract_features_experiment_3_candidate(candidate, incr):
-
-        global img_dirpath
-
-        follower_id = int(candidate["tumblog_id_follower"])
-        followee_id = int(candidate["tumblog_id_followee"])
-        try:
-            if follower_id in loaded_imgs:
-                follower_img_feat = loaded_imgs[follower_id]
-            else:
-                follower_img_feat = np.load(os.path.join(img_dirpath, "%d.npy" % follower_id))
-                loaded_imgs[follower_id] = follower_img_feat
-        except Exception as e:
-#            print("caught exception when loading profile image for follower_id %s" % follower_id)
-#            print(e)
-#            follower_img_feat = np.zeros(1000, dtype=np.float32)
-#            loaded_imgs[follower_id] = follower_img_feat
-            follower_img_feat = None
-            pass
-
-        try:
-            if followee_id in loaded_imgs:
-                followee_img_feat = loaded_imgs[followee_id]
-            else:
-                followee_img_feat = np.load(os.path.join(img_dirpath, "%d.npy" % followee_id))
-                loaded_imgs[followee_id] = followee_img_feat
-        except Exception as e:
-#            print("caught exception when loading profile image for followee_id %s" % followee_id)
-#            print(e)
-#            followee_img_feat = np.zeros(1000, dtype=np.float32)
-#            loaded_imgs[followee_id] = followee_img_feat
-            followee_img_feat = None
-            pass
-
-        def cos_sim(a, b):
-            return np.dot(a, b) / np.linalg.norm(a) / np.linalg.norm(b)
-
-        if followee_img_feat is None or follower_img_feat is None:
-            return
-
-        features["image_cos_similarity_%d" % (incr)] = cos_sim(follower_img_feat, followee_img_feat)
-        features["image_eucl_similarity_%d" % (incr)] = np.linalg.norm(follower_img_feat - followee_img_feat)
-
-        for i in range(followee_img_feat.shape[0]):
-            features["image_element_distance_%d_%d" % (incr, i)] = follower_img_feat[i] - followee_img_feat[i]
-
-    # Candidate comparison space
-    if label == 1:
-        _extract_features_experiment_3_candidate(nonreblog_candidate, incr=-1)
-        _extract_features_experiment_3_candidate(reblog_candidate, incr=1)
-    else:
-        _extract_features_experiment_3_candidate(reblog_candidate, incr=-1)
-        _extract_features_experiment_3_candidate(nonreblog_candidate, incr=1)
 
     return features
 
 
-def load_data(features_dir, filenames, fpath=None):
+def load_data(features_dir, filenames, fpath):
     """ Load or merge the input user data and Tumblr posts """
 
     # if fpath exists, will load from there
@@ -333,7 +262,7 @@ def load_data(features_dir, filenames, fpath=None):
             instance = (reblog_features, nonreblog_features) # reblog always first, nonreblog always second
             instances.append(instance)
             instance_labels.append(label)
-
+        
         # Save out
         parent_dir = os.path.dirname(fpath)
         if not os.path.exists(parent_dir):
@@ -341,7 +270,7 @@ def load_data(features_dir, filenames, fpath=None):
 
         with open(fpath, 'wb') as f:
             pickle.dump((instances, instance_labels), f)
-
+        
     return instances, instance_labels
 
 
@@ -389,14 +318,14 @@ def get_category_vocabs(instances, categories, fpath):
                     for value in category_value:
                         category_label_counts[category][value] += 1
                     counted_ids.add(followee_id)
-
+                    
                 followee_id = nonreblog_candidate['tumblog_id_followee']
                 if not followee_id in counted_ids:
                     category_value = [x.lower() for x in eval(nonreblog_candidate[category_followee])]
                     for value in category_value:
                         category_label_counts[category][value] += 1
                     counted_ids.add(followee_id)
-
+                
                 category_follower = category + '_terms_follower'
                 follower_id = reblog_candidate['tumblog_id_follower']
                 if not follower_id in counted_ids:
@@ -421,7 +350,7 @@ def get_informative_features(features_vectorizer, model, model_name, output_dirp
 
     feats_index2name = {v: k for k, v in features_vectorizer.vocabulary_.items()}
     feature_weights = model.coef_[0]
-
+    
     top_indices = np.argsort(feature_weights)[-1*n:]
     top_weights = np.sort(feature_weights)[-1*n:]
     bottom_indices = np.argsort(feature_weights)[:n]
@@ -429,13 +358,13 @@ def get_informative_features(features_vectorizer, model, model_name, output_dirp
 
     nontag_lines = [] # to sort and print
     lines = [] # to sort and print
-
+    
     for i, (j, w) in enumerate(zip(reversed(top_indices), reversed(top_weights))):
         feature_name = feats_index2name[j]
         if not feature_name.startswith('tag'):
             nontag_lines.append([i, feature_name, w, abs(w)])
         lines.append([i, feature_name, w, abs(w)])
-
+            
     for i, (j, w) in enumerate(zip(bottom_indices, bottom_weights)):
         feature_name = feats_index2name[j]
         if not feature_name.startswith('tag'):
@@ -459,20 +388,19 @@ def get_informative_features(features_vectorizer, model, model_name, output_dirp
     with open(outpath, 'w') as f:
         for l in lines:
             f.write(f'{l}\n')
-
+    
     print(f"\nSaved informative features to {outpath}")
 
 
-def extract_features(feature_sets, instances, instance_labels, identity_categories, test_instances=None, test_instance_labels=None, remove_zeros=False, initialization=None, test_initialization=None, categories=['all'], model_name=None, output_dirpath=None, save=False, extras=[], force=False):
-    """
+def extract_features(feature_sets, instances, instance_labels, identity_categories, test_instances=None, test_instance_labels=None, remove_zeros=False, initialization=None, test_initialization=None, categories=['all'], model_name=None, output_dirpath=None, save=False, extras=[]):
+    """ 
         Main feature extraction function that selects utility feature extractors.
-
+    
         Args:
             remove_zeros: whether or not to remove instances where the follower and all of their followees do not give the category
-            force: If True, force extraction of new features. Otherwise, will load saved features if available.
     """
     # Try loading data
-    if output_dirpath and model_name and not force:
+    if output_dirpath and model_name:
         features_fpath = os.path.join(output_dirpath, 'output', 'features', f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
         vectorizer_fpath = os.path.join(output_dirpath, 'output', 'feature_vectorizers', f'{model_name.replace("/", "_").replace(" ", "_")}_feature_vec.pkl')
 
@@ -488,7 +416,6 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
         'post_baseline': extract_features_post_baseline,
         'experiment1': extract_features_experiment_1,
         'experiment2': extract_features_experiment_2,
-        'experiment3': extract_features_experiment_3,
     }
 
     X = []
@@ -505,9 +432,10 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
 
     def _extract_features(feature_sets, reblog_candidate, nonreblog_candidate, label, initial_features={}, categories=categories, extras=extras):
         instance_features = initial_features
+
         for feature_set in feature_sets:
             instance_features.update(feature_set_extractors[feature_set](reblog_candidate, nonreblog_candidate, label, categories=categories, extras=extras))
-
+    
         return instance_features
 
 
@@ -576,7 +504,7 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
         outpath = os.path.join(dirpath, f'{model_name.replace("/", "_").replace(" ", "_")}_features.pkl')
         with open(outpath, 'wb') as f:
             pickle.dump((X_train, y_train, X_test, y_test), f)
-
+        
 
     # Save row indices of instances kept
     #if data_dirpath and model_name:
@@ -584,7 +512,7 @@ def extract_features(feature_sets, instances, instance_labels, identity_categori
     #    with open(outpath, 'w') as f:
     #        for i in keep_indices:
     #            f.write(f"{i}\n")
-
+    
 
     return X_train, y_train, X_test, y_test, X, features_vectorizer
 
@@ -621,28 +549,22 @@ def main():
     parser.add_argument('--remove-zeros', dest='remove_zeros', action='store_true')
     parser.add_argument('--experiment1', dest='experiment1', action='store_true')
     parser.add_argument('--experiment2', dest='experiment2', action='store_true')
-    parser.add_argument('--experiment3', dest='experiment3', action='store_true')
     parser.add_argument('--baseline', dest='baseline', action='store_true', help='Run only baseline')
     parser.add_argument('--baseline-preds', dest='baseline_preds_name', nargs='?', help='Name of baseline prediction file in <output_dirpath>/output/predictions; default baseline_lr_test_preds.txt', default='baseline_lr_test_preds.txt')
     parser.add_argument('--no-significance', dest='no_significance_test', action='store_true', help="Don't do a significance test over a baseline")
     parser.add_argument('--classifier', dest='classifier_type', nargs='?', help='lr svm ffn', default='')
-    parser.add_argument('--name', dest='model_name', nargs='?', help='model name base, None just puts classifier and features', default=None)
+    parser.add_argument('--name', dest='model_name', nargs='?', help='model name base, automatically appends experiment features and classifier, None just puts classifier and features', default=None)
     parser.add_argument('--data-dirpath', dest='data_dirpath', nargs='?', help='data dirpath; default /data/websci2020_tumblr_identity/icwsm2020_sample1k', default='/data/websci2020_tumblr_identity/icwsm2020_sample1k')
-    parser.add_argument('--test-dirpath', dest='test_dirpath', nargs='?', help='test dirpath if provided; if None (default) then does a random 10 percent split', default=None)
-    parser.add_argument('--image-data-dirpath', dest='img_dirpath', nargs='?', help='preprocessed data dirpath; default: /usr0/home/yansenwa/tumblr/data/processed', default='/usr0/home/yansenwa/tumblr/data/processed')
-    #parser.add_argument('--output-dirpath', dest='output_dirpath', nargs='?', help='output dirpath; default /usr0/home/yansenwa/tumblr', default='/usr0/home/yansenwa/tumblr')
+    parser.add_argument('--test-dirpath', dest='test_dirpath', nargs='?', help='test dirpath if provided; if None (default) then does a random 10% split', default=None)
     parser.add_argument('--output-dirpath', dest='output_dirpath', nargs='?', help='The output dirpath will be named ``output'' inside of this parent directory. Default is /projects/websci2020_tumblr_identity', default='/projects/websci2020_tumblr_identity')
     parser.add_argument('--categories', dest='categories', nargs='?', help='default all single categories + all together', default='all+all')
     parser.set_defaults(remove_zeros=False)
     parser.set_defaults(experiment1=False)
     parser.set_defaults(experiment2=False)
     parser.set_defaults(baseline=False)
-    parser.set_defaults(experiment3=False)
     args = parser.parse_args()
 
     data_dirpath = args.data_dirpath
-    global img_dirpath
-    img_dirpath = args.img_dirpath
     output_dirpath = args.output_dirpath
 
     feature_tables_dir = os.path.join(data_dirpath, 'feature_tables')
@@ -667,7 +589,7 @@ def main():
     print()
 
     identity_categories = ['age', 'ethnicity/nationality', 'fandoms', 'gender',
-                           'interests', 'location', 'personality type', 'pronouns', 'relationship status',
+                           'interests', 'location', 'personality type', 'pronouns', 'relationship status', 
                             #'roleplay',
                            'sexual orientation', 'zodiac']
 
@@ -680,23 +602,14 @@ def main():
         'svm': model_selection.GridSearchCV(svm.LinearSVC(dual=False, max_iter=10000, verbose=0), {'C': [.01, .1, 1, 10, 100], 'penalty': ['l2']}, n_jobs=10, cv=10, verbose=2),
         'ffn': neural_network.MLPClassifier(hidden_layer_sizes=(100, 32, 50), activation='relu', early_stopping=True, verbose=2)
     }
-
+    
     # ### Post baseline
     print("Extracting post baseline features...")
     X_train, y_train, X_test, y_test, baseline_X, features_vectorizer = extract_features(['post_baseline'], instances, instance_labels, identity_categories, test_instances=None, test_instance_labels=None, extras=[tag_vocab])
-
+    
     if test_instances:
         # Extract baseline features from provided test set, if there is one
         _, _, _, _, baseline_X_test, _ = extract_features(['post_baseline'], test_instances, test_instance_labels, identity_categories, extras=[tag_vocab])
-    else:
-        baseline_X_test = None
-    print("\nSHAPES")
-    print("X_train:", X_train.shape)
-    print("y_train:", len(y_train), ' ', y_train[0])
-    print("X_test:", X_test.shape)
-    print("y_test:", len(y_test), ' ', y_test[0])
-    print("baseline_X:", len(baseline_X), baseline_X[0])
-    print("features_vectorizer:", features_vectorizer)
 
     # Run baseline
     if args.baseline:
@@ -709,6 +622,7 @@ def main():
         else:
             model_name = f'{args.model_name}_{args.classifier_type}'
 
+        tqdm.write(f"\tTraining set #features: {X_train.shape[1]}, #instances: {X_train.shape[0]}")
         model, score, baseline_preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, output_dirpath)
         print(f'\tBaseline score: {score: .4f}')
 
@@ -730,8 +644,6 @@ def main():
             experiments.append('experiment1')
         if args.experiment2:
             experiments.append('experiment2')
-        if args.experiment3:
-            experiments.append('experiment3')
 
         if args.model_name is None:
             base_model_name = f'{args.classifier_type}_baseline'
@@ -742,8 +654,6 @@ def main():
             base_model_name = base_model_name + f'+exp1'
         if 'experiment2' in experiments:
             base_model_name = base_model_name + f'+exp2'
-        if 'experiment3' in experiments:
-            base_model_name = base_model_name + f'+exp3'
 
         if args.categories == 'all+all':
             selected_categories = ['all'] + identity_categories
@@ -759,37 +669,28 @@ def main():
 
             tqdm.write(f"\n{category} {' '.join(experiments)}")
 
+            test_initialization = None if not test_instances else copy.deepcopy(baseline_X_test)
             X_train, y_train, X_test, y_test, X, features_vectorizer = extract_features(
-                experiments,
-                instances,
-                instance_labels,
-                identity_categories,
-                initialization=copy.deepcopy(baseline_X),
-                remove_zeros=args.remove_zeros,
-                categories=[category],
+                experiments, 
+                instances, 
+                instance_labels, 
+                identity_categories, 
+                initialization=copy.deepcopy(baseline_X), 
+                remove_zeros=args.remove_zeros, 
+                categories=[category], 
                 test_instances=test_instances,
                 test_instance_labels=test_instance_labels,
-                test_initialization=copy.deepcopy(baseline_X_test),
-                model_name=model_name,
-                output_dirpath=output_dirpath,
-                save=True,
-                force=False,
+                test_initialization=test_initialization,
+                model_name=model_name, 
+                output_dirpath=output_dirpath, 
+                save=True, 
                 extras=[tag_vocab, category_vocabs])
-            tqdm.write(f"Number of instances: {X_train.shape[0] + X_test.shape[0]}")
-
-            print("\nSHAPES")
-            print("X_train:", X_train.shape)
-            print("y_train:", len(y_train), ' ', y_train[0])
-            print("X_test:", X_test.shape)
-            print("y_test:", len(y_test), ' ', y_test[0])
-            print("X:", len(baseline_X), baseline_X[0])
-#            print("features_vectorizer:", features_vectorizer.get_feature_names())
-
+            tqdm.write(f"Number of total instances: {X_train.shape[0] + X_test.shape[0]}")
+            tqdm.write(f"\tTraining set #features: {X_train.shape[1]}, #instances: {X_train.shape[0]}")
 
             clf = classifiers[args.classifier_type]
             model, score, preds = run_model(model_name, clf, X_train, y_train, X_test, y_test, output_dirpath)
-            print(f'{model_name} score: {score: .4f}')
-
+            print(f'\n{model_name} score: {score: .4f}\n')
 
             # Significance test
             if not args.no_significance_test:
